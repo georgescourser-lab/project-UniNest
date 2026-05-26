@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Property Details | UniNest</title>
+  <meta name="description" content="View property details, amenities, and contact the agent directly.">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="page-property">
+  <!-- Navbar -->
+  <nav class="navbar scrolled">
+    <div class="container nav-container">
+      <a href="index.html" class="logo">
+        UniNest
+      </a>
+      <div class="nav-links">
+        <a href="index.html">Home</a>
+        <a href="search.html" class="active">Properties</a>
+        <a href="agents.html">Agents</a>
+      </div>
+      <div class="nav-actions">
+        <a href="#" class="btn btn-secondary">Log In</a>
+        <a href="#" class="btn btn-primary">Sign Up</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container property-detail-layout animate-fade-in-up">
+    <!-- Image Carousel (starts as skeleton) -->
+    <div class="property-img-carousel skeleton" id="prop-carousel">
+      <!-- Injected by JS after delay -->
+    </div>
+
+    <!-- Content Area -->
+    <div class="detail-content">
+      <div class="detail-main">
+        <h1 id="prop-title" class="skeleton skeleton-title" style="margin-top: 1rem;"></h1>
+        <div class="detail-meta">
+          <span id="prop-location" class="skeleton skeleton-text" style="width: 30%;"></span>
+          <span class="badge badge-primary" id="prop-type-badge" style="opacity: 0;">Type</span>
+        </div>
+
+        <div class="detail-section">
+          <h3>Rent</h3>
+          <p style="font-size: 2rem; font-weight: 600; color: var(--color-primary);"><span id="prop-price"></span> <span style="font-size: 1rem; color: var(--color-gray); font-weight: 400;">/ month</span></p>
+        </div>
+
+        <div class="detail-section">
+          <h3>Description</h3>
+          <div id="prop-desc" class="skeleton" style="height: 100px; border-radius: var(--border-radius-sm); margin-bottom: 1rem; color: var(--color-dark-muted); line-height: 1.8;"></div>
+        </div>
+
+        <div class="detail-section">
+          <h3>Amenities</h3>
+          <div class="amenities-grid" id="prop-amenities">
+            <!-- Rendered via JS -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Agent Sidebar -->
+      <aside>
+        <div class="agent-contact-card">
+          <img src="" alt="Agent" id="agent-img" style="display: none;">
+          <h4 id="agent-name" class="skeleton skeleton-title" style="margin: 0 auto 0.5rem; width: 60%;"></h4>
+          <div class="rating" id="agent-rating" style="margin-bottom: 1.5rem;">
+            ★ 5.0 (Reviews)
+          </div>
+          <p style="color: var(--color-gray); margin-bottom: 1.5rem; font-size: 0.875rem;">This agent usually replies within an hour.</p>
+          
+          <a href="#" target="_blank" class="btn btn-primary" style="background-color: #25D366;" id="agent-whatsapp">
+            Contact on WhatsApp
+          </a>
+          <button class="btn btn-secondary">
+            Send Email
+          </button>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer" style="margin-top: 5rem;">
+    <div class="container">
+      <div class="footer-bottom">
+        &copy; 2026 UniNest. All rights reserved.
+      </div>
+    </div>
+  </footer>
+
+  <script src="js/data.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

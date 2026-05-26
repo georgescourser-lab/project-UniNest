@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Search Properties | UniNest</title>
+  <meta name="description" content="Search for student properties. Filter by type, location, and price to find your perfect match.">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="page-search">
+  <!-- Navbar -->
+  <nav class="navbar scrolled">
+    <div class="container nav-container">
+      <a href="index.html" class="logo">
+        UniNest
+      </a>
+      <div class="nav-links">
+        <a href="index.html">Home</a>
+        <a href="search.html" class="active">Properties</a>
+        <a href="agents.html">Agents</a>
+      </div>
+      <div class="nav-actions">
+        <a href="#" class="btn btn-secondary">Log In</a>
+        <a href="#" class="btn btn-primary">Sign Up</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container search-page-layout">
+    <!-- Sidebar Filters -->
+    <aside class="filter-sidebar animate-fade-in-up">
+      <h3 style="margin-bottom: 1.5rem; font-size: 1.25rem;">Filters</h3>
+      
+      <div class="filter-group">
+        <h4>Property Type</h4>
+        <select id="filter-type" style="width: 100%; padding: 0.75rem; border: 1px solid var(--color-gray-light); border-radius: var(--border-radius-sm);">
+          <option value="Any">All Types</option>
+          <option value="Bedsitter">Bedsitter</option>
+          <option value="1-Bedroom">1-Bedroom</option>
+          <option value="2-Bedroom">2-Bedroom</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <h4>Distance to Campus</h4>
+        <label><input type="radio" name="distance" checked> Any distance</label>
+        <label><input type="radio" name="distance"> Under 1 mile</label>
+        <label><input type="radio" name="distance"> Under 3 miles</label>
+      </div>
+      
+      <div class="filter-group">
+        <h4>Amenities</h4>
+        <label><input type="checkbox"> Wi-Fi included</label>
+        <label><input type="checkbox"> Security</label>
+        <label><input type="checkbox"> Furnished</label>
+      </div>
+      
+      <button class="btn btn-primary">Apply Filters</button>
+    </aside>
+
+    <!-- Results Area -->
+    <main>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+        <h1 style="font-size: 1.75rem; font-weight: 500;">Available Properties</h1>
+        <div style="color: var(--color-gray);">Sort by: <strong>Newest</strong></div>
+      </div>
+      
+      <div class="properties-grid" id="search-results">
+        <!-- Rendered via JS, starting with skeletons -->
+      </div>
+    </main>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer" style="margin-top: 5rem;">
+    <div class="container">
+      <div class="footer-bottom">
+        &copy; 2026 UniNest. All rights reserved.
+      </div>
+    </div>
+  </footer>
+
+  <script src="js/data.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

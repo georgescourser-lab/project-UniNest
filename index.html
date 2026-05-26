@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UniNest | Student House Hunting</title>
+  <meta name="description"
+    content="Find the perfect student accommodation near your campus. Browse bedsitters, apartments, and houses with UniNest.">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body class="page-home">
+  <!-- Navbar -->
+  <nav class="navbar">
+    <div class="container nav-container">
+      <a href="index.html" class="logo">
+        UniNest
+      </a>
+      <div class="nav-links">
+        <a href="index.html" class="active">Home</a>
+        <a href="search.html">Properties</a>
+        <a href="agents.html">Agents</a>
+      </div>
+      <div class="nav-actions">
+        <a href="#" class="btn btn-secondary">Log In</a>
+        <a href="#" class="btn btn-primary">Sign Up</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="container hero-container">
+      <div class="hero-content animate-fade-in-up">
+        <h1>Find your perfect <br><span>Student Nest</span></h1>
+        <p>Browse verified bedsitters and apartments near your campus. Connect directly with agents and secure your next
+          home without the hassle.</p>
+        <div class="search-bar-wrapper">
+          <form id="home-search-form"
+            style="display: flex; width: 100%; align-items: center; justify-content: space-between;">
+            <div class="search-input-group">
+              <select id="search-type">
+                <option value="Any">Property Type</option>
+                <option value="Bedsitter">Bedsitter</option>
+                <option value="1-Bedroom">1-Bedroom</option>
+                <option value="2-Bedroom">2-Bedroom</option>
+              </select>
+            </div>
+            <div class="search-input-group">
+              <input type="text" id="search-location" placeholder="Campus or Area...">
+            </div>
+            <button type="submit" class="btn btn-primary search-btn">Search</button>
+          </form>
+        </div>
+      </div>
+      <div class="hero-image animate-fade-in-up" style="animation-delay: 0.2s;">
+        <img
+          src="https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
+          alt="Modern Student Living">
+      </div>
+    </div>
+  </section>
+
+  <!-- How It Works Section -->
+  <section class="section">
+    <div class="container">
+      <h2 class="section-title">How It Works</h2>
+      <p class="section-subtitle">Your journey to the perfect student house in 3 simple steps</p>
+
+      <div class="steps-container">
+        <div class="step-card animate-fade-in-up">
+          <h3>1. Search & Filter</h3>
+          <p>Find properties that match your budget, location, and specific needs.</p>
+        </div>
+        <div class="step-card animate-fade-in-up" style="animation-delay: 0.1s;">
+          <h3>2. Compare Options</h3>
+          <p>View photos, check amenities, and save your favourite listings.</p>
+        </div>
+        <div class="step-card animate-fade-in-up" style="animation-delay: 0.2s;">
+          <h3>3. Contact Agent</h3>
+          <p>Connect instantly via WhatsApp or Email to arrange a viewing.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Featured Properties Section (Carousel) -->
+  <section class="section" style="background-color: var(--color-white);">
+    <div class="container">
+      <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 3rem;">
+        <div>
+          <h2 class="section-title" style="margin-bottom: 0; text-align: left;">Featured Listings</h2>
+          <p class="section-subtitle" style="margin-bottom: 0; text-align: left; margin-top: 0.5rem;">Swipe to explore
+            hand-picked properties</p>
+        </div>
+        <a href="search.html" class="btn btn-secondary">View All</a>
+      </div>
+
+      <!-- Carousel Container -->
+      <div class="carousel-container" id="featured-listings">
+        <!-- Rendered via JS -->
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <a href="index.html" class="logo">
+            UniNest
+          </a>
+          <p>Making student house hunting simple, safe, and stress-free.</p>
+        </div>
+        <div>
+          <h4>Explore</h4>
+          <ul class="footer-links">
+            <li><a href="search.html">All Properties</a></li>
+            <li><a href="agents.html">Verified Agents</a></li>
+            <li><a href="#">How it works</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>Support</h4>
+          <ul class="footer-links">
+            <li><a href="#">Help Center</a></li>
+            <li><a href="#">Contact Us</a></li>
+            <li><a href="#">Report a listing</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>Legal</h4>
+          <ul class="footer-links">
+            <li><a href="#">Terms of Service</a></li>
+            <li><a href="#">Privacy Policy</a></li>
+            <li><a href="#">Cookie Policy</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        &copy; 2026 UniNest. All rights reserved.
+      </div>
+    </div>
+  </footer>
+
+  <script src="js/data.js"></script>
+  <script src="js/main.js"></script>
+</body>
+
+</html>
