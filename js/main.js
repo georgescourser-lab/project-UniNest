@@ -1,8 +1,12 @@
 // Core functionality for UniNest
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   initNavbar();
   
+  if (window.fetchSupabaseData) {
+    await window.fetchSupabaseData();
+  }
+
   const path = window.location.pathname;
   if (path.includes('search.html') || document.body.classList.contains('page-search')) {
     initSearchPage();

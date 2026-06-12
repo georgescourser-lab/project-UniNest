@@ -20,8 +20,7 @@
         <a href="agents.html">Agents</a>
       </div>
       <div class="nav-actions">
-        <a href="#" class="btn btn-secondary">Log In</a>
-        <a href="#" class="btn btn-primary">Sign Up</a>
+        <!-- Injected dynamically by auth.js -->
       </div>
     </div>
   </nav>
@@ -44,8 +43,8 @@
       <div class="filter-group">
         <h4>Distance to Campus</h4>
         <label><input type="radio" name="distance" checked> Any distance</label>
-        <label><input type="radio" name="distance"> Under 1 mile</label>
-        <label><input type="radio" name="distance"> Under 3 miles</label>
+        <label><input type="radio" name="distance"> Under 1 km</label>
+        <label><input type="radio" name="distance"> Under 3 km</label>
       </div>
       
       <div class="filter-group">
@@ -80,7 +79,9 @@
     </div>
   </footer>
 
-  <script src="js/data.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/supabaseClient.js"></script>
+  <script src="js/auth.js"></script>
   <script src="js/main.js"></script>
 </body>
 </html>
