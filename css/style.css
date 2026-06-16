@@ -587,8 +587,53 @@ button, input, select {
   .footer-grid { grid-template-columns: 1fr 1fr; }
 }
 
+/* Mobile Menu Button */
+.mobile-menu-btn {
+  display: none;
+  background: transparent;
+  border: none;
+  color: var(--color-dark);
+  cursor: pointer;
+  padding: 0.5rem;
+}
+
 @media (max-width: 768px) {
-  .nav-links { display: none; }
+  .mobile-menu-btn {
+    display: block;
+  }
+  
+  .nav-links, .nav-actions { 
+    display: none; 
+    width: 100%;
+    flex-direction: column;
+    align-items: center;
+    padding: 1rem 0;
+  }
+
+  .nav-container.mobile-menu-open {
+    background: var(--color-white);
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    flex-wrap: wrap;
+    padding-bottom: 1rem;
+    box-shadow: var(--shadow-md);
+  }
+
+  .nav-container.mobile-menu-open .nav-links,
+  .nav-container.mobile-menu-open .nav-actions {
+    display: flex;
+  }
+
+  .nav-container.mobile-menu-open .mobile-menu-btn {
+    margin-top: 1.5rem;
+  }
+  
+  .nav-container.mobile-menu-open .logo {
+    margin-top: 1.5rem;
+  }
+
   .footer-grid { grid-template-columns: 1fr; }
 }
 
