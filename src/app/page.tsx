@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { prisma } from '@/lib/prisma';
 
+export const dynamic = 'force-dynamic';
+
 export default async function Home() {
   // Fetch featured listings dynamically using Prisma
   const properties = await prisma.properties.findMany({
