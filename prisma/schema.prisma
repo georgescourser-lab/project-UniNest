@@ -1,0 +1,37 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model agents {
+  id             Int          @id
+  name           String?
+  image          String?
+  rating         Decimal?     @db.Decimal
+  reviews        Int?
+  listings_count Int?
+  whatsapp       String?
+  email          String?
+  properties     properties[]
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model properties {
+  id          Int      @id
+  title       String?
+  type        String?
+  rent        String?
+  location    String?
+  distance    String?
+  image       String?
+  images      String[]
+  amenities   String[]
+  agent_id    Int?
+  description String?
+  agents      agents?  @relation(fields: [agent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
