@@ -800,3 +800,49 @@ button, input, select {
 .agent-card .btn {
   width: 100%;
 }
+
+/* Tablet & Mobile devices */
+@media (max-width: 768px) {
+  .search-page-layout {
+    grid-template-columns: 1fr;
+  }
+  .filter-sidebar {
+    position: static;
+    margin-bottom: 2rem;
+  }
+  .detail-content {
+    grid-template-columns: 1fr;
+  }
+  .agent-contact-card {
+    position: static;
+  }
+  .hero h1 {
+    font-size: 2.5rem;
+  }
+  .section-title {
+    font-size: 2rem;
+  }
+  .footer-grid {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+  .amenities-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 576px) {
+  .hero h1 {
+    font-size: 2rem;
+  }
+  .properties-grid {
+    grid-template-columns: 1fr;
+  }
+  .agents-grid {
+    grid-template-columns: 1fr;
+  }
+  .carousel-item {
+    flex: 0 0 100%;
+  }
+}
+
