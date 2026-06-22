@@ -4,6 +4,10 @@ import { PrismaPg } from '@prisma/adapter-pg';
 
 const connectionString = process.env.DATABASE_URL;
 
+if (!connectionString) {
+  throw new Error('DATABASE_URL is not set. Please set it in Vercel Environment Variables.');
+}
+
 const prismaClientSingleton = () => {
   // Use ssl for production to prevent connection errors to remote DBs like Supabase
   const pool = new Pool({ 
