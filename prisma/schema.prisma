@@ -20,9 +20,8 @@ model agents {
   properties     properties[]
 }
 
-/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model properties {
-  id          Int      @id
+  id          Int       @id
   title       String?
   type        String?
   rent        String?
@@ -33,5 +32,16 @@ model properties {
   amenities   String[]
   agent_id    Int?
   description String?
-  agents      agents?  @relation(fields: [agent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  agents      agents?   @relation(fields: [agent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  reviews     reviews[]
+}
+
+model reviews {
+  id          Int        @id @default(autoincrement())
+  client_name String
+  rating      Int
+  comment     String
+  created_at  DateTime   @default(now())
+  property_id Int
+  properties  properties @relation(fields: [property_id], references: [id], onDelete: Cascade)
 }

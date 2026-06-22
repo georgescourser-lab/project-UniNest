@@ -1,12 +1,18 @@
 import { prisma } from '@/lib/prisma';
 import Link from 'next/link';
+import ReviewForm from './ReviewForm';
 
 export const dynamic = 'force-dynamic';
 
 export default async function PropertyDetailPage({ params }: { params: { id: string } }) {
   const property = await prisma.properties.findUnique({
     where: { id: parseInt(params.id) },
-    include: { agents: true }
+    include: { 
+      agents: true,
+      reviews: {
+        orderBy: { created_at: 'desc' }
+      }
+    }
   });
 
   if (!property) return <div className="container" style={{paddingTop: '120px'}}>Property not found</div>;
@@ -45,6 +51,31 @@ export default async function PropertyDetailPage({ params }: { params: { id: str
                 <div key={i} className="amenity">✔️ {amenity}</div>
               ))}
             </div>
+          </div>
+
+          <div className="detail-section reviews-section" style={{ marginTop: '3rem', paddingTop: '2rem', borderTop: '1px solid #eee' }}>
+            <h3>Client Reviews</h3>
+            
+            {property.reviews && property.reviews.length > 0 ? (
+              <div className="reviews-list" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginTop: '1.5rem' }}>
+                {property.reviews.map((review) => (
+                  <div key={review.id} className="review-card" style={{ padding: '1.5rem', backgroundColor: '#f9fafb', borderRadius: '8px' }}>
+                    <div className="review-header" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                      <strong>{review.client_name}</strong>
+                      <span style={{ color: '#fbbf24' }}>{'⭐'.repeat(review.rating)}</span>
+                    </div>
+                    <p style={{ margin: 0, color: '#4b5563' }}>{review.comment}</p>
+                    <small style={{ color: '#9ca3af', display: 'block', marginTop: '0.5rem' }}>
+                      {new Date(review.created_at).toLocaleDateString()}
+                    </small>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-muted" style={{ marginTop: '1rem' }}>No reviews yet. Be the first to review this property!</p>
+            )}
+
+            <ReviewForm propertyId={property.id} />
           </div>
         </div>
 
