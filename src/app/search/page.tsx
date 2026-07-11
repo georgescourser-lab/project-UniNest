@@ -11,7 +11,7 @@ export default async function SearchPage() {
       rent: '5,000',
       location: 'Near JKUAT',
       distance: '0.5km',
-      image: 'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=500&q=80',
+      image: '/images/property-1.svg',
       images: [],
       amenities: ['WiFi', 'Water', 'Electric'],
       agent_id: 1,
@@ -24,7 +24,7 @@ export default async function SearchPage() {
       rent: '8,000',
       location: 'Off-Campus',
       distance: '1km',
-      image: 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=500&q=80',
+      image: '/images/property-2.svg',
       images: [],
       amenities: ['WiFi', 'Water', 'Electric', 'Furnished'],
       agent_id: 2,
@@ -37,7 +37,7 @@ export default async function SearchPage() {
       rent: '6,500',
       location: 'Near UON',
       distance: '0.3km',
-      image: 'https://images.unsplash.com/photo-1540932239986-310128078ceb?w=500&q=80',
+      image: '/images/property-3.svg',
       images: [],
       amenities: ['WiFi', 'Water', 'Electric', 'Balcony'],
       agent_id: 3,
@@ -50,7 +50,7 @@ export default async function SearchPage() {
       rent: '7,000',
       location: 'Campus Area',
       distance: '0.2km',
-      image: 'https://images.unsplash.com/photo-1494145904049-0dca7dc20215?w=500&q=80',
+      image: '/images/property-4.svg',
       images: [],
       amenities: ['WiFi', 'Water', 'Electric', 'Furnished', 'TV'],
       agent_id: 4,
@@ -63,7 +63,7 @@ export default async function SearchPage() {
       rent: '4,500',
       location: 'Kenyatta Road',
       distance: '1.2km',
-      image: 'https://images.unsplash.com/photo-1522393881947-610442a59f56?w=500&q=80',
+      image: '/images/property-1.svg',
       images: [],
       amenities: ['WiFi', 'Water', 'Electric'],
       agent_id: 1,
@@ -76,7 +76,7 @@ export default async function SearchPage() {
       rent: '9,000',
       location: 'Opposite JKUAT',
       distance: '0.8km',
-      image: 'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=500&q=80',
+      image: '/images/property-2.svg',
       images: [],
       amenities: ['WiFi', 'Water', 'Electric', 'Parking'],
       agent_id: 2,
@@ -108,7 +108,7 @@ export default async function SearchPage() {
           {properties.map((property) => (
             <div key={property.id} className="property-card">
               <Link href={`/property/${property.id}`} className="property-image">
-                <img src={property.image || (property.images && property.images[0]) || 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=500&q=80'} alt={property.title || 'Property'} />
+                <img src={property.image || (property.images && property.images[0]) || '/images/property-2.svg'} alt={property.title || 'Property'} />
                 <div className="property-badges">
                   <span className="badge badge-primary">{property.type}</span>
                 </div>

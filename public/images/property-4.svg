@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" fill="none">
+  <rect width="800" height="600" rx="32" fill="#fae8ff"/>
+  <rect x="100" y="160" width="600" height="320" rx="30" fill="#ffffff"/>
+  <rect x="155" y="220" width="145" height="220" rx="20" fill="#f5d0fe"/>
+  <rect x="330" y="220" width="140" height="100" rx="16" fill="#f5d0fe"/>
+  <rect x="330" y="340" width="140" height="100" rx="16" fill="#f5d0fe"/>
+  <rect x="500" y="220" width="145" height="220" rx="20" fill="#f5d0fe"/>
+  <text x="400" y="560" text-anchor="middle" font-family="Arial, sans-serif" font-size="30" fill="#1e293b">Premium Student Suite</text>
+</svg>

@@ -11,8 +11,8 @@ const mockProperties: Record<number, any> = {
     rent: '5,000',
     location: 'Near JKUAT',
     distance: '0.5km',
-    image: 'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=800&q=80',
-    images: ['https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=800&q=80', 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800&q=80'],
+    image: '/images/property-1.svg',
+    images: ['/images/property-1.svg', '/images/property-2.svg'],
     amenities: ['WiFi', 'Water', 'Electric', 'Furnished'],
     description: 'Comfortable bedsitter with excellent access to campus. Newly renovated with modern fixtures.',
     agents: { id: 1, name: 'Jane Kariuki', whatsapp: '254712345678', email: 'jane@uninest.com' },
@@ -28,8 +28,8 @@ const mockProperties: Record<number, any> = {
     rent: '8,000',
     location: 'Off-Campus',
     distance: '1km',
-    image: 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800&q=80',
-    images: ['https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800&q=80'],
+    image: '/images/property-2.svg',
+    images: ['/images/property-2.svg'],
     amenities: ['WiFi', 'Water', 'Electric', 'Furnished', 'Kitchen'],
     description: 'Spacious 1-bedroom apartment with modern amenities and excellent ventilation.',
     agents: { id: 2, name: 'David Omondi', whatsapp: '254723456789', email: 'david@uninest.com' },
@@ -44,8 +44,8 @@ const mockProperties: Record<number, any> = {
     rent: '6,500',
     location: 'Near UON',
     distance: '0.3km',
-    image: 'https://images.unsplash.com/photo-1540932239986-310128078ceb?w=800&q=80',
-    images: ['https://images.unsplash.com/photo-1540932239986-310128078ceb?w=800&q=80'],
+    image: '/images/property-3.svg',
+    images: ['/images/property-3.svg'],
     amenities: ['WiFi', 'Water', 'Electric', 'Balcony', 'Living Room'],
     description: 'Great shared apartment for students. Well-maintained and close to campus.',
     agents: { id: 3, name: 'Mary Mwangi', whatsapp: '254734567890', email: 'mary@uninest.com' },
@@ -58,8 +58,8 @@ const mockProperties: Record<number, any> = {
     rent: '7,000',
     location: 'Campus Area',
     distance: '0.2km',
-    image: 'https://images.unsplash.com/photo-1494145904049-0dca7dc20215?w=800&q=80',
-    images: ['https://images.unsplash.com/photo-1494145904049-0dca7dc20215?w=800&q=80'],
+    image: '/images/property-4.svg',
+    images: ['/images/property-4.svg'],
     amenities: ['WiFi', 'Water', 'Electric', 'Furnished', 'TV', 'Air Conditioning'],
     description: 'Luxury bedsitter with premium features and contemporary design.',
     agents: { id: 4, name: 'Samuel Kipchoge', whatsapp: '254745678901', email: 'samuel@uninest.com' },
@@ -84,7 +84,7 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
              <img key={idx} src={img} alt={`${property.title} - ${idx}`} />
            ))
         ) : (
-           <img src={property.image || 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800&q=80'} alt={property.title || 'Property'} />
+           <img src={property.image || '/images/property-2.svg'} alt={property.title || 'Property'} />
         )}
       </div>
 
@@ -143,7 +143,7 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
             
             {property.agents && (
               <>
-                <img src={property.agents.image || 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=200&q=80'} alt={property.agents.name || 'Agent'} />
+                <img src={property.agents.image || '/images/agent-1.svg'} alt={property.agents.name || 'Agent'} />
                 <h4>{property.agents.name}</h4>
                 <div className="rating">★ {property.agents.rating?.toString()} ({property.agents.reviews} reviews)</div>
                 <a href={`https://wa.me/${property.agents.whatsapp}`} className="btn btn-primary" target="_blank" rel="noopener noreferrer">Message on WhatsApp</a>

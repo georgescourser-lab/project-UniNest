@@ -5,7 +5,7 @@ export default async function AgentsPage() {
     {
       id: 1,
       name: 'Jane Kariuki',
-      image: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&q=80',
+      image: '/images/agent-1.svg',
       rating: 4.8,
       reviews: 124,
       listings_count: 45,
@@ -15,7 +15,7 @@ export default async function AgentsPage() {
     {
       id: 2,
       name: 'David Omondi',
-      image: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&q=80',
+      image: '/images/agent-2.svg',
       rating: 4.6,
       reviews: 98,
       listings_count: 32,
@@ -25,7 +25,7 @@ export default async function AgentsPage() {
     {
       id: 3,
       name: 'Mary Mwangi',
-      image: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&q=80',
+      image: '/images/agent-3.svg',
       rating: 4.9,
       reviews: 156,
       listings_count: 58,
@@ -35,7 +35,7 @@ export default async function AgentsPage() {
     {
       id: 4,
       name: 'Samuel Kipchoge',
-      image: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&q=80',
+      image: '/images/agent-4.svg',
       rating: 4.7,
       reviews: 112,
       listings_count: 41,
@@ -52,7 +52,7 @@ export default async function AgentsPage() {
       <div className="agents-grid">
         {agents.map((agent) => (
           <div key={agent.id} className="agent-card">
-            <img src={agent.image || 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=200&q=80'} alt={agent.name || 'Agent'} />
+            <img src={agent.image || '/images/agent-1.svg'} alt={agent.name || 'Agent'} />
             <h3>{agent.name}</h3>
             <div className="agent-stats">
               <span>★ {agent.rating?.toString()} ({agent.reviews} reviews)</span>

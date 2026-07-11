@@ -256,6 +256,12 @@ button, input, select {
   z-index: 10;
 }
 
+.hero-image img,
+.property-image img,
+.property-img-carousel img {
+  width: 100%;
+}
+
 .search-input-group {
   display: flex;
   flex: 1;
@@ -581,6 +587,7 @@ button, input, select {
 @media (max-width: 992px) {
   .hero-container { flex-direction: column; text-align: center; }
   .hero-content { margin: 0 auto; }
+  .hero-image { width: 100%; }
   .search-bar-wrapper { flex-direction: column; background: transparent; box-shadow: none; padding: 0; }
   .search-input-group { background: var(--color-white); width: 100%; border-radius: var(--border-radius); margin-bottom: 1rem; border: none; box-shadow: var(--shadow-md); }
   .search-btn { width: 100%; }
@@ -600,39 +607,31 @@ button, input, select {
 
 @media (max-width: 992px) {
   .mobile-menu-btn {
-    display: block;
-  }
-  
-  .nav-links, .nav-actions { 
-    display: none; 
-    width: 100%;
-    flex-direction: column;
-    align-items: center;
-    padding: 1rem 0;
+    display: none;
   }
 
-  .nav-container.mobile-menu-open {
-    background: var(--color-white);
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
+  .nav-container {
     flex-wrap: wrap;
-    padding-bottom: 1rem;
-    box-shadow: var(--shadow-md);
+    padding: 1rem 0;
+    gap: 1rem;
   }
 
-  .nav-container.mobile-menu-open .nav-links,
-  .nav-container.mobile-menu-open .nav-actions {
+  .nav-links,
+  .nav-actions {
     display: flex;
+    width: 100%;
+    justify-content: center;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.75rem;
   }
 
-  .nav-container.mobile-menu-open .mobile-menu-btn {
-    margin-top: 1.5rem;
+  .nav-links {
+    order: 3;
   }
-  
-  .nav-container.mobile-menu-open .logo {
-    margin-top: 1.5rem;
+
+  .nav-actions {
+    order: 4;
   }
 
   .footer-grid { grid-template-columns: 1fr; }
@@ -759,6 +758,45 @@ button, input, select {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
   gap: 2rem;
+}
+
+@media (max-width: 480px) {
+  .container {
+    padding: 0 1rem;
+  }
+
+  .hero {
+    padding-top: 100px;
+  }
+
+  .hero h1 {
+    font-size: 1.9rem;
+  }
+
+  .section-title {
+    font-size: 1.75rem;
+  }
+
+  .property-detail-layout,
+  .search-page-layout {
+    padding-top: 100px;
+  }
+
+  .property-img-carousel {
+    height: 260px;
+  }
+
+  .detail-meta {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .agent-contact-card,
+  .filter-sidebar,
+  .property-card,
+  .agent-card {
+    border-radius: 12px;
+  }
 }
 
 .agent-card {
