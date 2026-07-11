@@ -1,14 +1,63 @@
 import Link from 'next/link';
-import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
 export default async function Home() {
-  // Fetch featured listings dynamically using Prisma
-  const properties = await prisma.properties.findMany({
-    take: 4,
-    // Assuming we just want 4 properties for the featured section
-  });
+  // Mock featured listings data
+  const properties = [
+    {
+      id: 1,
+      title: 'Cozy Bedsitter',
+      type: 'Bedsitter',
+      rent: '5,000',
+      location: 'Near JKUAT',
+      distance: '0.5km',
+      image: '/property1.jpg',
+      images: [],
+      amenities: [],
+      agent_id: null,
+      description: 'Comfortable bedsitter with excellent access to campus'
+    },
+    {
+      id: 2,
+      title: 'Modern 1-Bedroom',
+      type: '1-Bedroom',
+      rent: '8,000',
+      location: 'Off-Campus',
+      distance: '1km',
+      image: '/property2.jpg',
+      images: [],
+      amenities: [],
+      agent_id: null,
+      description: 'Spacious 1-bedroom apartment with modern amenities'
+    },
+    {
+      id: 3,
+      title: 'Shared 2-Bedroom',
+      type: '2-Bedroom',
+      rent: '6,500',
+      location: 'Near UON',
+      distance: '0.3km',
+      image: '/property3.jpg',
+      images: [],
+      amenities: [],
+      agent_id: null,
+      description: 'Great shared apartment for students'
+    },
+    {
+      id: 4,
+      title: 'Premium Bedsitter',
+      type: 'Bedsitter',
+      rent: '7,000',
+      location: 'Campus Area',
+      distance: '0.2km',
+      image: '/property4.jpg',
+      images: [],
+      amenities: [],
+      agent_id: null,
+      description: 'Luxury bedsitter with premium features'
+    }
+  ];
 
   return (
     <>

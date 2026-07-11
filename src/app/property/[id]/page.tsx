@@ -1,19 +1,77 @@
-import { prisma } from '@/lib/prisma';
 import Link from 'next/link';
 import ReviewForm from './ReviewForm';
 
 export const dynamic = 'force-dynamic';
 
-export default async function PropertyDetailPage({ params }: { params: { id: string } }) {
-  const property = await prisma.properties.findUnique({
-    where: { id: parseInt(params.id) },
-    include: { 
-      agents: true,
-      reviews: {
-        orderBy: { created_at: 'desc' }
-      }
-    }
-  });
+const mockProperties: Record<number, any> = {
+  1: {
+    id: 1,
+    title: 'Cozy Bedsitter',
+    type: 'Bedsitter',
+    rent: '5,000',
+    location: 'Near JKUAT',
+    distance: '0.5km',
+    image: 'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=800&q=80',
+    images: ['https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=800&q=80', 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800&q=80'],
+    amenities: ['WiFi', 'Water', 'Electric', 'Furnished'],
+    description: 'Comfortable bedsitter with excellent access to campus. Newly renovated with modern fixtures.',
+    agents: { id: 1, name: 'Jane Kariuki', whatsapp: '254712345678', email: 'jane@uninest.com' },
+    reviews: [
+      { id: 1, client_name: 'Alex K.', rating: 5, comment: 'Great location and very affordable!', created_at: new Date('2026-06-15') },
+      { id: 2, client_name: 'Sam M.', rating: 4, comment: 'Good amenities, responsive landlord', created_at: new Date('2026-06-10') }
+    ]
+  },
+  2: {
+    id: 2,
+    title: 'Modern 1-Bedroom',
+    type: '1-Bedroom',
+    rent: '8,000',
+    location: 'Off-Campus',
+    distance: '1km',
+    image: 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800&q=80',
+    images: ['https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800&q=80'],
+    amenities: ['WiFi', 'Water', 'Electric', 'Furnished', 'Kitchen'],
+    description: 'Spacious 1-bedroom apartment with modern amenities and excellent ventilation.',
+    agents: { id: 2, name: 'David Omondi', whatsapp: '254723456789', email: 'david@uninest.com' },
+    reviews: [
+      { id: 3, client_name: 'Lisa T.', rating: 5, comment: 'Perfect for students, very quiet', created_at: new Date('2026-06-12') }
+    ]
+  },
+  3: {
+    id: 3,
+    title: 'Shared 2-Bedroom',
+    type: '2-Bedroom',
+    rent: '6,500',
+    location: 'Near UON',
+    distance: '0.3km',
+    image: 'https://images.unsplash.com/photo-1540932239986-310128078ceb?w=800&q=80',
+    images: ['https://images.unsplash.com/photo-1540932239986-310128078ceb?w=800&q=80'],
+    amenities: ['WiFi', 'Water', 'Electric', 'Balcony', 'Living Room'],
+    description: 'Great shared apartment for students. Well-maintained and close to campus.',
+    agents: { id: 3, name: 'Mary Mwangi', whatsapp: '254734567890', email: 'mary@uninest.com' },
+    reviews: []
+  },
+  4: {
+    id: 4,
+    title: 'Premium Bedsitter',
+    type: 'Bedsitter',
+    rent: '7,000',
+    location: 'Campus Area',
+    distance: '0.2km',
+    image: 'https://images.unsplash.com/photo-1494145904049-0dca7dc20215?w=800&q=80',
+    images: ['https://images.unsplash.com/photo-1494145904049-0dca7dc20215?w=800&q=80'],
+    amenities: ['WiFi', 'Water', 'Electric', 'Furnished', 'TV', 'Air Conditioning'],
+    description: 'Luxury bedsitter with premium features and contemporary design.',
+    agents: { id: 4, name: 'Samuel Kipchoge', whatsapp: '254745678901', email: 'samuel@uninest.com' },
+    reviews: [
+      { id: 4, client_name: 'John D.', rating: 5, comment: 'Exactly what I was looking for!', created_at: new Date('2026-06-18') }
+    ]
+  }
+};
+
+export default async function PropertyDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const property = mockProperties[parseInt(id)];
 
   if (!property) return <div className="container" style={{paddingTop: '120px'}}>Property not found</div>;
 
@@ -22,7 +80,7 @@ export default async function PropertyDetailPage({ params }: { params: { id: str
       <Link href="/search" className="btn btn-secondary" style={{ marginBottom: '1rem' }}>&larr; Back to Search</Link>
       <div className="property-img-carousel">
         {property.images && property.images.length > 0 ? (
-           property.images.map((img, idx) => (
+           property.images.map((img: string, idx: number) => (
              <img key={idx} src={img} alt={`${property.title} - ${idx}`} />
            ))
         ) : (
@@ -47,7 +105,7 @@ export default async function PropertyDetailPage({ params }: { params: { id: str
           <div className="detail-section">
             <h3>Amenities</h3>
             <div className="amenities-grid">
-              {property.amenities && property.amenities.map((amenity, i) => (
+              {property.amenities && property.amenities.map((amenity: string, i: number) => (
                 <div key={i} className="amenity">✔️ {amenity}</div>
               ))}
             </div>
@@ -58,7 +116,7 @@ export default async function PropertyDetailPage({ params }: { params: { id: str
             
             {property.reviews && property.reviews.length > 0 ? (
               <div className="reviews-list" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginTop: '1.5rem' }}>
-                {property.reviews.map((review) => (
+                {property.reviews.map((review: any) => (
                   <div key={review.id} className="review-card" style={{ padding: '1.5rem', backgroundColor: '#f9fafb', borderRadius: '8px' }}>
                     <div className="review-header" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                       <strong>{review.client_name}</strong>
