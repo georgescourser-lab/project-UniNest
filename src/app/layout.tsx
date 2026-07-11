@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import "./globals.css";
+import SiteNav from "@/components/SiteNav";
 
 export const metadata: Metadata = {
   title: "UniNest | Student House Hunting",
@@ -15,31 +16,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="page-home min-h-full flex flex-col">
-        {/* Navbar */}
-        <nav className="navbar">
-          <div className="container nav-container">
-            <Link href="/" className="logo">
-              UniNest
-            </Link>
-            <button className="mobile-menu-btn" aria-label="Toggle menu">
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="3" y1="12" x2="21" y2="12"></line>
-                <line x1="3" y1="6" x2="21" y2="6"></line>
-                <line x1="3" y1="18" x2="21" y2="18"></line>
-              </svg>
-            </button>
-            <div className="nav-links">
-              <Link href="/">Home</Link>
-              <Link href="/search">Properties</Link>
-              <Link href="/agents">Agents</Link>
-            </div>
-            <div className="nav-actions">
-              <Link href="/login" className="btn btn-secondary" style={{ padding: '0.5rem 1rem' }}>Login</Link>
-              <Link href="/signup" className="btn btn-primary" style={{ padding: '0.5rem 1rem' }}>Sign Up</Link>
-            </div>
-          </div>
-        </nav>
+        <SiteNav />
 
         <main className="flex-grow">
           {children}

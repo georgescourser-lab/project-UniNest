@@ -573,6 +573,127 @@ button, input, select {
   font-size: 0.875rem;
 }
 
+/* Auth Pages */
+.auth-page {
+  min-height: calc(100vh - 80px);
+  padding: 8rem 1.5rem 4rem;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at top, rgba(59, 130, 246, 0.12), transparent 30%),
+    linear-gradient(180deg, #f8fafc 0%, #eef6ff 100%);
+}
+
+.auth-page-signup {
+  background:
+    radial-gradient(circle at top, rgba(16, 185, 129, 0.12), transparent 30%),
+    linear-gradient(180deg, #f8fafc 0%, #f0fdf4 100%);
+}
+
+.auth-card {
+  width: min(100%, 460px);
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(203, 213, 225, 0.7);
+  backdrop-filter: blur(12px);
+  border-radius: 24px;
+  box-shadow: var(--shadow-lg);
+  padding: 2rem;
+}
+
+.auth-card-header {
+  margin-bottom: 1.5rem;
+}
+
+.auth-kicker {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--color-primary);
+  font-weight: 600;
+  font-size: 0.78rem;
+  margin-bottom: 0.5rem;
+}
+
+.auth-card h1 {
+  font-size: 2rem;
+  line-height: 1.1;
+  margin-bottom: 0.75rem;
+}
+
+.auth-helper {
+  color: var(--color-gray);
+}
+
+.auth-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.auth-field {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.auth-field span {
+  font-weight: 500;
+  color: var(--color-dark);
+}
+
+.auth-field input {
+  width: 100%;
+  border: 1px solid var(--color-gray-light);
+  border-radius: 14px;
+  padding: 0.9rem 1rem;
+  background: var(--color-white);
+  color: var(--color-dark);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.auth-field input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.12);
+}
+
+.auth-submit {
+  width: 100%;
+  margin-top: 0.25rem;
+}
+
+.auth-error {
+  color: var(--color-danger);
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.15);
+  border-radius: 14px;
+  padding: 0.75rem 1rem;
+}
+
+.auth-switch {
+  margin-top: 1.25rem;
+  text-align: center;
+  color: var(--color-gray);
+}
+
+.auth-switch a {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.nav-session-status {
+  color: var(--color-gray);
+  font-weight: 500;
+}
+
+.nav-menu {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+}
+
+.nav-toggle {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* Animations */
 @keyframes fadeInUp {
   from { opacity: 0; transform: translateY(20px); }
@@ -607,31 +728,78 @@ button, input, select {
 
 @media (max-width: 992px) {
   .mobile-menu-btn {
-    display: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    background: var(--color-primary-light);
   }
 
   .nav-container {
-    flex-wrap: wrap;
+    position: relative;
     padding: 1rem 0;
+    gap: 0.75rem;
+    align-items: center;
+  }
+
+  .nav-menu {
+    display: none;
+    position: absolute;
+    top: calc(100% + 0.75rem);
+    left: 0;
+    right: 0;
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.98);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--color-primary-light);
+    border-radius: 20px;
+    box-shadow: var(--shadow-lg);
+    flex-direction: column;
+    align-items: stretch;
     gap: 1rem;
+    z-index: 1001;
+  }
+
+  .nav-toggle:checked ~ .nav-menu {
+    display: flex;
   }
 
   .nav-links,
   .nav-actions {
-    display: flex;
     width: 100%;
-    justify-content: center;
-    align-items: center;
-    flex-wrap: wrap;
+    flex-direction: column;
+    align-items: stretch;
     gap: 0.75rem;
   }
 
-  .nav-links {
-    order: 3;
+  .nav-toggle:not(:checked) ~ .nav-menu .nav-links,
+  .nav-toggle:not(:checked) ~ .nav-menu .nav-actions {
+    display: none;
   }
 
-  .nav-actions {
-    order: 4;
+  .nav-toggle:checked ~ .nav-menu .nav-links,
+  .nav-toggle:checked ~ .nav-menu .nav-actions {
+    display: flex;
+  }
+
+  .nav-links a,
+  .nav-actions a,
+  .nav-actions button {
+    width: 100%;
+  }
+
+  .nav-links a {
+    padding: 0.9rem 1rem;
+    border-radius: 14px;
+    background: var(--color-primary-light);
+    text-align: center;
+  }
+
+  .nav-links a.active {
+    background: rgba(59, 130, 246, 0.15);
+    color: var(--color-primary);
   }
 
   .footer-grid { grid-template-columns: 1fr; }
@@ -796,6 +964,20 @@ button, input, select {
   .property-card,
   .agent-card {
     border-radius: 12px;
+  }
+
+  .auth-page {
+    padding-inline: 1rem;
+    padding-top: 7rem;
+  }
+
+  .auth-card {
+    padding: 1.25rem;
+    border-radius: 18px;
+  }
+
+  .auth-card h1 {
+    font-size: 1.65rem;
   }
 }
 
