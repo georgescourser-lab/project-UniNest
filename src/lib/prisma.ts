@@ -9,13 +9,14 @@ if (!connectionString) {
 }
 
 const prismaClientSingleton = () => {
-  // Use ssl for production to prevent connection errors to remote DBs like Supabase
-  const pool = new Pool({ 
+  const shouldUseSsl = connectionString.includes('supabase') || connectionString.includes('sslmode=') || process.env.NODE_ENV === 'production';
+
+  const pool = new Pool({
     connectionString,
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined
+    ssl: shouldUseSsl ? { rejectUnauthorized: false } : undefined,
   });
   const adapter = new PrismaPg(pool);
-  
+
   return new PrismaClient({ adapter });
 };
 
