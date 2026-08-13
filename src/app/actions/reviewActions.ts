@@ -1,6 +1,6 @@
 'use server'
 
-import { prisma } from '@/lib/prisma'
+import { getPrisma } from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
 
 export async function addReview(formData: FormData) {
@@ -14,6 +14,8 @@ export async function addReview(formData: FormData) {
   }
 
   try {
+    const prisma = getPrisma()
+
     await prisma.reviews.create({
       data: {
         property_id,
@@ -28,7 +30,6 @@ export async function addReview(formData: FormData) {
     // Log full error server-side for debugging, but return a safe message to the client
     // so we don't leak internal details in the response body.
     // Use console.error so Next.js/Turbopack will include it in server logs.
-    // eslint-disable-next-line no-console
     console.error('addReview error:', err)
     throw new Error('Unable to add review — server error. Check server logs.')
   }

@@ -9,7 +9,13 @@ export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState(() => {
+    if (typeof window !== 'undefined' && window.location.search.includes('signup=success')) {
+      return 'Account created. Please log in to continue.';
+    }
+
+    return '';
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
 
@@ -25,12 +31,6 @@ export default function LoginPage() {
       setIsCheckingSession(false);
     });
   }, [router]);
-
-  useEffect(() => {
-    if (window.location.search.includes('signup=success')) {
-      setError('Account created. Please log in to continue.');
-    }
-  }, []);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

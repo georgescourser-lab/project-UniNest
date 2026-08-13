@@ -14,8 +14,8 @@ export default function ReviewForm({ propertyId }: { propertyId: number }) {
     try {
       await addReview(formData)
       ref.current?.reset()
-    } catch (e: any) {
-      setError(e.message || 'Something went wrong')
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Something went wrong')
     } finally {
       setPending(false)
     }

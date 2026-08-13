@@ -3,7 +3,40 @@ import ReviewForm from './ReviewForm';
 
 export const dynamic = 'force-dynamic';
 
-const mockProperties: Record<number, any> = {
+type PropertyReview = {
+  id: number;
+  client_name: string;
+  rating: number;
+  comment: string;
+  created_at: Date;
+};
+
+type PropertyAgent = {
+  id: number;
+  name: string;
+  whatsapp: string;
+  email: string;
+  image?: string;
+  rating?: number;
+  reviews?: number;
+};
+
+type PropertyDetail = {
+  id: number;
+  title: string;
+  type: string;
+  rent: string;
+  location: string;
+  distance: string;
+  image: string;
+  images: string[];
+  amenities: string[];
+  description: string;
+  agents: PropertyAgent;
+  reviews: PropertyReview[];
+};
+
+const mockProperties: Record<number, PropertyDetail> = {
   1: {
     id: 1,
     title: 'Cozy Bedsitter',
@@ -116,7 +149,7 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
             
             {property.reviews && property.reviews.length > 0 ? (
               <div className="reviews-list" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginTop: '1.5rem' }}>
-                {property.reviews.map((review: any) => (
+                {property.reviews.map((review: PropertyReview) => (
                   <div key={review.id} className="review-card" style={{ padding: '1.5rem', backgroundColor: '#f9fafb', borderRadius: '8px' }}>
                     <div className="review-header" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                       <strong>{review.client_name}</strong>
