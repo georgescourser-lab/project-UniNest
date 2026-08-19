@@ -1,11 +1,9 @@
-import { updateSession } from '@/utils/supabase/middleware'
-import { type NextRequest } from 'next/server'
+import { updateSession } from '@/utils/supabase/middleware';
+import { type NextRequest } from 'next/server';
 
-export async function proxy(request: NextRequest) {
-  return await updateSession(request)
+export async function middleware(request: NextRequest) {
+  return await updateSession(request);
 }
-
-export default proxy;
 
 export const config = {
   matcher: [
@@ -14,8 +12,8 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
-     * Feel free to modify this pattern to include more paths.
+     * - any static asset extensions (svg, png, jpg, jpeg, gif, webp)
      */
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
-}
+};
