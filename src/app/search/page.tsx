@@ -1,88 +1,17 @@
 import Link from 'next/link';
+import { getPrisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
 export default async function SearchPage() {
-  const properties = [
-    {
-      id: 1,
-      title: 'Cozy Bedsitter',
-      type: 'Bedsitter',
-      rent: '5,000',
-      location: 'Near JKUAT',
-      distance: '0.5km',
-      image: '/images/property-1.svg',
-      images: [],
-      amenities: ['WiFi', 'Water', 'Electric'],
-      agent_id: 1,
-      description: 'Comfortable bedsitter with excellent access to campus'
-    },
-    {
-      id: 2,
-      title: 'Modern 1-Bedroom',
-      type: '1-Bedroom',
-      rent: '8,000',
-      location: 'Off-Campus',
-      distance: '1km',
-      image: '/images/property-2.svg',
-      images: [],
-      amenities: ['WiFi', 'Water', 'Electric', 'Furnished'],
-      agent_id: 2,
-      description: 'Spacious 1-bedroom apartment with modern amenities'
-    },
-    {
-      id: 3,
-      title: 'Shared 2-Bedroom',
-      type: '2-Bedroom',
-      rent: '6,500',
-      location: 'Near UON',
-      distance: '0.3km',
-      image: '/images/property-3.svg',
-      images: [],
-      amenities: ['WiFi', 'Water', 'Electric', 'Balcony'],
-      agent_id: 3,
-      description: 'Great shared apartment for students'
-    },
-    {
-      id: 4,
-      title: 'Premium Bedsitter',
-      type: 'Bedsitter',
-      rent: '7,000',
-      location: 'Campus Area',
-      distance: '0.2km',
-      image: '/images/property-4.svg',
-      images: [],
-      amenities: ['WiFi', 'Water', 'Electric', 'Furnished', 'TV'],
-      agent_id: 4,
-      description: 'Luxury bedsitter with premium features'
-    },
-    {
-      id: 5,
-      title: 'Student Haven Bedsitter',
-      type: 'Bedsitter',
-      rent: '4,500',
-      location: 'Kenyatta Road',
-      distance: '1.2km',
-      image: '/images/property-1.svg',
-      images: [],
-      amenities: ['WiFi', 'Water', 'Electric'],
-      agent_id: 1,
-      description: 'Budget-friendly bedsitter near main campus'
-    },
-    {
-      id: 6,
-      title: 'Spacious 2-Bedroom',
-      type: '2-Bedroom',
-      rent: '9,000',
-      location: 'Opposite JKUAT',
-      distance: '0.8km',
-      image: '/images/property-2.svg',
-      images: [],
-      amenities: ['WiFi', 'Water', 'Electric', 'Parking'],
-      agent_id: 2,
-      description: 'Large 2-bedroom with parking space'
+  const prisma = getPrisma();
+  
+  // Fetch properties from the database
+  const properties = await prisma.properties.findMany({
+    orderBy: {
+      id: 'desc'
     }
-  ];
+  });
 
   return (
     <div className="container" style={{ paddingTop: '120px' }}>

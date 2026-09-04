@@ -7,6 +7,9 @@ export default async function SiteNav() {
   const supabase = await createClient();
   const { data: { session } } = await supabase.auth.getSession();
   const sessionUser = session?.user;
+  
+  const adminEmails = process.env.ADMIN_EMAILS?.split(',') || [];
+  const isAdmin = sessionUser ? adminEmails.includes(sessionUser.email || '') : false;
 
   return (
     <nav className="navbar">
@@ -24,7 +27,7 @@ export default async function SiteNav() {
           </svg>
         </label>
         <div id="site-navigation" className="nav-menu">
-          <NavLinks />
+          <NavLinks isAdmin={isAdmin} />
           <div className="nav-actions">
             {sessionUser ? (
               <>

@@ -20,7 +20,7 @@ model agents {
 }
 
 model properties {
-  id          Int       @id
+  id          Int       @id @default(autoincrement())
   title       String?
   type        String?
   rent        String?
