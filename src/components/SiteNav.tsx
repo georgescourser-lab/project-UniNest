@@ -1,43 +1,12 @@
-"use client";
-
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { createClient } from '@/utils/supabase/client';
+import { createClient } from '@/utils/supabase/server';
+import NavLinks from './NavLinks';
+import { logout } from '@/app/actions/authActions';
 
-type SessionUser = {
-  email?: string | null;
-};
-
-export default function SiteNav() {
-  const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
-  const [isLoadingSession, setIsLoadingSession] = useState(true);
-  const pathname = usePathname();
-
-  const linkClassName = (href: string) => pathname === href ? 'active' : '';
-
-  useEffect(() => {
-    const supabase = createClient();
-
-    supabase.auth.getSession().then(({ data }) => {
-      setSessionUser(data.session?.user ?? null);
-      setIsLoadingSession(false);
-    });
-
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSessionUser(nextSession?.user ?? null);
-    });
-
-    return () => {
-      authListener.subscription.unsubscribe();
-    };
-  }, []);
-
-  const handleLogout = async () => {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    setSessionUser(null);
-  };
+export default async function SiteNav() {
+  const supabase = await createClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  const sessionUser = session?.user;
 
   return (
     <nav className="navbar">
@@ -55,20 +24,16 @@ export default function SiteNav() {
           </svg>
         </label>
         <div id="site-navigation" className="nav-menu">
-          <div className="nav-links">
-            <Link href="/" className={linkClassName('/')}>Home</Link>
-            <Link href="/search" className={linkClassName('/search')}>Properties</Link>
-            <Link href="/agents" className={linkClassName('/agents')}>Agents</Link>
-          </div>
+          <NavLinks />
           <div className="nav-actions">
-            {isLoadingSession ? (
-              <span className="nav-session-status">Checking session...</span>
-            ) : sessionUser ? (
+            {sessionUser ? (
               <>
                 <span className="nav-session-status">Hi, {sessionUser.email?.split('@')[0] ?? 'there'}</span>
-                <button className="btn btn-secondary" style={{ padding: '0.5rem 1rem' }} onClick={handleLogout} type="button">
-                  Logout
-                </button>
+                <form action={logout}>
+                  <button className="btn btn-secondary" style={{ padding: '0.5rem 1rem' }} type="submit">
+                    Logout
+                  </button>
+                </form>
               </>
             ) : (
               <>

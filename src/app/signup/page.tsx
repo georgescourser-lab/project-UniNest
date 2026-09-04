@@ -1,58 +1,11 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from 'react';
+import { useActionState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { createClient } from '@/utils/supabase/client';
+import { signup } from '@/app/actions/authActions';
 
 export default function SignupPage() {
-  const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isCheckingSession, setIsCheckingSession] = useState(true);
-
-  useEffect(() => {
-    const supabase = createClient();
-
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) {
-        router.replace('/search');
-        return;
-      }
-
-      setIsCheckingSession(false);
-    });
-  }, [router]);
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setIsSubmitting(true);
-    setError('');
-
-    const supabase = createClient();
-    const { error: signUpError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/login?signup=success`,
-      },
-    });
-
-    if (signUpError) {
-      setError(signUpError.message);
-      setIsSubmitting(false);
-      return;
-    }
-
-    router.push('/login?signup=success');
-    router.refresh();
-  };
-
-  if (isCheckingSession) {
-    return <main className="auth-page"><div className="auth-card"><p className="auth-helper">Checking your session...</p></div></main>;
-  }
+  const [state, formAction, pending] = useActionState(signup, null);
 
   return (
     <main className="auth-page auth-page-signup">
@@ -63,13 +16,12 @@ export default function SignupPage() {
           <p className="auth-helper">Save listings, stay organized, and contact trusted agents faster.</p>
         </div>
 
-        <form className="auth-form" onSubmit={handleSubmit}>
+        <form className="auth-form" action={formAction}>
           <label className="auth-field">
             <span>Email</span>
             <input
               type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              name="email"
               placeholder="student@example.com"
               autoComplete="email"
               required
@@ -80,8 +32,7 @@ export default function SignupPage() {
             <span>Password</span>
             <input
               type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
+              name="password"
               placeholder="Create a secure password"
               autoComplete="new-password"
               minLength={6}
@@ -89,10 +40,10 @@ export default function SignupPage() {
             />
           </label>
 
-          {error ? <p className="auth-error" role="alert">{error}</p> : null}
+          {state?.error ? <p className="auth-error" role="alert">{state.error}</p> : null}
 
-          <button className="btn btn-primary auth-submit" type="submit" disabled={isSubmitting}>
-            {isSubmitting ? 'Creating account...' : 'Sign Up'}
+          <button className="btn btn-primary auth-submit" type="submit" disabled={pending}>
+            {pending ? 'Creating account...' : 'Sign Up'}
           </button>
         </form>
 

@@ -1,61 +1,24 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from 'react';
+import { useActionState, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@/utils/supabase/client';
+import { login } from '@/app/actions/authActions';
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState(() => {
+  const [state, formAction, pending] = useActionState(login, null);
+  
+  // This state just handles initial messages like ?signup=success
+  const [initialMessage, setInitialMessage] = useState(() => {
     if (typeof window !== 'undefined' && window.location.search.includes('signup=success')) {
       return 'Account created. Please log in to continue.';
     }
-
+    if (typeof window !== 'undefined' && window.location.search.includes('error=')) {
+      return new URLSearchParams(window.location.search).get('error') || '';
+    }
     return '';
   });
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isCheckingSession, setIsCheckingSession] = useState(true);
-
-  useEffect(() => {
-    const supabase = createClient();
-
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) {
-        router.replace('/search');
-        return;
-      }
-
-      setIsCheckingSession(false);
-    });
-  }, [router]);
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setIsSubmitting(true);
-    setError('');
-
-    const supabase = createClient();
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (signInError) {
-      setError(signInError.message);
-      setIsSubmitting(false);
-      return;
-    }
-
-    router.push('/search');
-    router.refresh();
-  };
-
-  if (isCheckingSession) {
-    return <main className="auth-page"><div className="auth-card"><p className="auth-helper">Checking your session...</p></div></main>;
-  }
 
   return (
     <main className="auth-page">
@@ -66,13 +29,12 @@ export default function LoginPage() {
           <p className="auth-helper">Access saved listings, contact agents, and manage your student housing journey.</p>
         </div>
 
-        <form className="auth-form" onSubmit={handleSubmit}>
+        <form className="auth-form" action={formAction}>
           <label className="auth-field">
             <span>Email</span>
             <input
               type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              name="email"
               placeholder="student@example.com"
               autoComplete="email"
               required
@@ -83,18 +45,19 @@ export default function LoginPage() {
             <span>Password</span>
             <input
               type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
+              name="password"
               placeholder="••••••••"
               autoComplete="current-password"
               required
             />
           </label>
 
-          {error ? <p className="auth-error" role="alert">{error}</p> : null}
+          {(state?.error || initialMessage) ? (
+            <p className="auth-error" role="alert">{state?.error || initialMessage}</p>
+          ) : null}
 
-          <button className="btn btn-primary auth-submit" type="submit" disabled={isSubmitting}>
-            {isSubmitting ? 'Logging in...' : 'Log In'}
+          <button className="btn btn-primary auth-submit" type="submit" disabled={pending}>
+            {pending ? 'Logging in...' : 'Log In'}
           </button>
         </form>
 
