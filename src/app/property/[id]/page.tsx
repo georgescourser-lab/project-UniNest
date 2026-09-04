@@ -102,7 +102,11 @@ const mockProperties: Record<number, PropertyDetail> = {
   }
 };
 
-export default async function PropertyDetailPage({ params }: { params: Promise<{ id: string }> }) {
+type PageProps = {
+  params: Promise<{ id: string }>;
+};
+
+export default async function PropertyDetailPage({ params }: PageProps) {
   const { id } = await params;
   const property = mockProperties[parseInt(id)];
 
