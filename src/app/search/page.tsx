@@ -29,14 +29,14 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
 
   const whereClause: any = {};
   
-  if (types && types.length > 0) {
-    whereClause.type = { in: types };
+  const typesArray = types as string[] | undefined;
+  if (typesArray && typesArray.length > 0) {
+    whereClause.type = { in: typesArray };
   }
   
-  // Assuming campus corresponds to location broadly or we could just match it
-  if (campuses && campuses.length > 0) {
-    // If multiple campuses, we can do OR conditions on location
-    whereClause.OR = campuses.map((campus: string) => ({
+  const campusesArray = campuses as string[] | undefined;
+  if (campusesArray && campusesArray.length > 0) {
+    whereClause.OR = campusesArray.map((campus: string) => ({
       location: { contains: campus, mode: 'insensitive' }
     }));
   }
