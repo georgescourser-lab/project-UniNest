@@ -1,10 +1,14 @@
 import Link from 'next/link';
 import { getPrisma } from '@/lib/prisma';
+import { createClient } from '@/utils/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
 export default async function Home() {
   const prisma = getPrisma();
+  const supabase = await createClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  const userId = session?.user?.id;
   
   // Fetch featured properties (just taking the latest 6 for now)
   const properties = await prisma.properties.findMany({
@@ -22,13 +26,15 @@ export default async function Home() {
             <h1>Find your perfect <br/><span>Student Nest</span></h1>
             <p>Browse verified bedsitters and apartments near your campus. Connect directly with agents and secure your next home without the hassle.</p>
             <div className="search-bar-wrapper">
-              <form id="home-search-form" style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between' }}>
+              <form action="/search" method="GET" id="home-search-form" style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div className="search-input-group">
                   <select id="search-type" name="type">
                     <option value="Any">Property Type</option>
+                    <option value="2 Bedroom">2 Bedroom</option>
+                    <option value="1 Bedroom">1 Bedroom</option>
+                    <option value="Studio">Studio</option>
                     <option value="Bedsitter">Bedsitter</option>
-                    <option value="1-Bedroom">1-Bedroom</option>
-                    <option value="2-Bedroom">2-Bedroom</option>
+                    <option value="Single Room">Single Room</option>
                   </select>
                 </div>
                 {/* NEW CAMPUS DROPDOWN */}
@@ -88,15 +94,16 @@ export default async function Home() {
 
           <div className="carousel-container" id="featured-listings">
             {properties.map((property) => (
-              <div key={property.id} className="property-card carousel-item">
-                <div className="property-image">
-                  <img src={property.image || (property.images && property.images[0]) || 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=500&q=80'} alt={property.title || 'Property'} />
-                  <div className="property-badges">
-                    <span className="badge badge-primary">{property.type}</span>
+              <Link key={property.id} href={`/property/${property.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                <div className="property-card carousel-item">
+                  <div className="property-image">
+                    <img src={property.image || (property.images && property.images[0]) || 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=500&q=80'} alt={property.title || 'Property'} />
+                    <div className="property-badges">
+                      <span className="badge badge-primary">{property.type}</span>
+                    </div>
                   </div>
-                </div>
-                <div className="property-content">
-                  <div className="property-price">{property.rent}<span>/month</span></div>
+                  <div className="property-content">
+                    <div className="property-price">{property.rent}<span>/month</span></div>
                   <h3 className="property-title">{property.title}</h3>
                   <div className="property-location">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
@@ -109,6 +116,7 @@ export default async function Home() {
                   </div>
                 </div>
               </div>
+              </Link>
             ))}
             {properties.length === 0 && (
               <p>No featured listings found.</p>

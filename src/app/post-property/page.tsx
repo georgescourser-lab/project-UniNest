@@ -1,11 +1,16 @@
 "use client";
 
-import { useActionState } from 'react';
-import { addProperty } from '@/app/actions/propertyActions';
+import { useActionState, useEffect, useState } from 'react';
+import { addProperty, getAgents } from '@/app/actions/propertyActions';
 import Link from 'next/link';
 
 export default function PostPropertyPage() {
   const [state, formAction, pending] = useActionState(addProperty, null);
+  const [agents, setAgents] = useState<any[]>([]);
+
+  useEffect(() => {
+    getAgents().then(setAgents).catch(console.error);
+  }, []);
 
   return (
     <main className="post-property-page container">
@@ -29,15 +34,26 @@ export default function PostPropertyPage() {
               />
             </label>
 
+            <label className="form-field">
+              <span>Assign Agent</span>
+              <select name="agent_id">
+                <option value="">No Agent Assigned</option>
+                {agents.map(agent => (
+                  <option key={agent.id} value={agent.id}>{agent.name} (WhatsApp: {agent.whatsapp})</option>
+                ))}
+              </select>
+            </label>
+
             <div className="form-row">
               <label className="form-field">
                 <span>Property Type <span className="required">*</span></span>
                 <select name="type" required>
                   <option value="">Select a type...</option>
-                  <option value="Apartment">Apartment</option>
+                  <option value="2 Bedroom">2 Bedroom</option>
+                  <option value="1 Bedroom">1 Bedroom</option>
                   <option value="Studio">Studio</option>
-                  <option value="House">House</option>
-                  <option value="Room">Private Room</option>
+                  <option value="Bedsitter">Bedsitter</option>
+                  <option value="Single Room">Single Room</option>
                 </select>
               </label>
 
@@ -100,15 +116,25 @@ export default function PostPropertyPage() {
           </div>
 
           <div className="form-section">
-            <h2>Photos</h2>
-            <p className="helper-text">Upload high-quality images of your property (Max 5MB each).</p>
+            <h2>Media</h2>
+            <p className="helper-text">Upload high-quality images and videos of your property (Max 50MB each).</p>
             <label className="form-field">
+              <span>Images <span className="required">*</span></span>
               <input 
                 type="file" 
                 name="images" 
                 accept="image/png, image/jpeg, image/webp" 
                 multiple 
                 required
+              />
+            </label>
+            <label className="form-field">
+              <span>Videos (Optional)</span>
+              <input 
+                type="file" 
+                name="videos" 
+                accept="video/mp4, video/webm, video/ogg" 
+                multiple 
               />
             </label>
           </div>

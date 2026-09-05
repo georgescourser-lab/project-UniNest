@@ -28,11 +28,14 @@ model properties {
   distance    String?
   image       String?
   images      String[]
+  videos      String[]
   amenities   String[]
   agent_id    Int?
   description String?
-  agents      agents?   @relation(fields: [agent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  agents      agents?     @relation(fields: [agent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   reviews     reviews[]
+  favorites   favorites[]
+  applications applications[]
 }
 
 model reviews {
@@ -43,4 +46,25 @@ model reviews {
   created_at  DateTime   @default(now())
   property_id Int
   properties  properties @relation(fields: [property_id], references: [id], onDelete: Cascade)
+}
+
+model favorites {
+  id          Int        @id @default(autoincrement())
+  user_id     String
+  property_id Int
+  created_at  DateTime   @default(now())
+  properties  properties @relation(fields: [property_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, property_id])
+}
+
+model applications {
+  id          Int        @id @default(autoincrement())
+  user_id     String
+  property_id Int
+  status      String     @default("Pending")
+  created_at  DateTime   @default(now())
+  properties  properties @relation(fields: [property_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, property_id])
 }

@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { createClient } from '@/utils/supabase/server';
 import NavLinks from './NavLinks';
 import { logout } from '@/app/actions/authActions';
+import MobileMenuCloser from './MobileMenuCloser';
 
 export default async function SiteNav() {
   const supabase = await createClient();
@@ -13,6 +14,7 @@ export default async function SiteNav() {
 
   return (
     <nav className="navbar">
+      <MobileMenuCloser />
       <div className="container nav-container">
         <input id="site-nav-toggle" className="nav-toggle" type="checkbox" />
         <Link href="/" className="logo">

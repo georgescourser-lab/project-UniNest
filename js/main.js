@@ -114,16 +114,6 @@ function initHomepage() {
       featuredContainer.innerHTML = featured.map(p => createPropertyCard(p, true)).join('');
     }, 800);
   }
-  
-  const searchForm = document.getElementById('home-search-form');
-  if (searchForm) {
-    searchForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const type = document.getElementById('search-type').value;
-      const location = document.getElementById('search-location').value;
-      window.location.href = `search.html?type=${type}&location=${location}`;
-    });
-  }
 }
 
 // Search Page Logic
