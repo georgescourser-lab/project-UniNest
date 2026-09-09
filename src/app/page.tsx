@@ -7,8 +7,8 @@ export const dynamic = 'force-dynamic';
 export default async function Home() {
   const prisma = getPrisma();
   const supabase = await createClient();
-  const { data: { session } } = await supabase.auth.getSession();
-  const userId = session?.user?.id;
+  const { data: { user } } = await supabase.auth.getUser();
+  const userId = user?.id;
   
   // Fetch featured properties (just taking the latest 6 for now)
   const properties = await prisma.properties.findMany({

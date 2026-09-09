@@ -6,13 +6,13 @@ import { revalidatePath } from 'next/cache'
 
 export async function applyForProperty(propertyId: number) {
   const supabase = await createClient()
-  const { data: { session } } = await supabase.auth.getSession()
+  const { data: { user } } = await supabase.auth.getUser()
 
-  if (!session?.user) {
+  if (!user) {
     return { error: 'You must be logged in to apply for properties.', success: false }
   }
 
-  const userId = session.user.id
+  const userId = user.id
   const prisma = getPrisma()
 
   try {

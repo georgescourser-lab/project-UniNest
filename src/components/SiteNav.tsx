@@ -6,8 +6,8 @@ import MobileMenuCloser from './MobileMenuCloser';
 
 export default async function SiteNav() {
   const supabase = await createClient();
-  const { data: { session } } = await supabase.auth.getSession();
-  const sessionUser = session?.user;
+  const { data: { user } } = await supabase.auth.getUser();
+  const sessionUser = user;
   
   const adminEmails = process.env.ADMIN_EMAILS?.split(',') || [];
   const isAdmin = sessionUser ? adminEmails.includes(sessionUser.email || '') : false;
@@ -18,6 +18,7 @@ export default async function SiteNav() {
       <div className="container nav-container">
         <input id="site-nav-toggle" className="nav-toggle" type="checkbox" />
         <Link href="/" className="logo">
+          <img src="/images/logo.png.jpeg" alt="UniNest Logo" style={{ height: '2rem', width: 'auto' }} />
           UniNest
         </Link>
         <label className="mobile-menu-btn" htmlFor="site-nav-toggle" aria-label="Toggle menu" aria-controls="site-navigation">

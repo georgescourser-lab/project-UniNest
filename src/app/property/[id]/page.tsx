@@ -15,8 +15,8 @@ export default async function PropertyDetailPage({ params }: PageProps) {
   const { id } = await params;
   const prisma = getPrisma();
   const supabase = await createClient();
-  const { data: { session } } = await supabase.auth.getSession();
-  const userId = session?.user?.id;
+  const { data: { user } } = await supabase.auth.getUser();
+  const userId = user?.id;
   
   const property = await prisma.properties.findUnique({
     where: { id: parseInt(id) },

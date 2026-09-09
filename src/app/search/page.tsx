@@ -8,8 +8,8 @@ export const dynamic = 'force-dynamic';
 export default async function SearchPage({ searchParams }: { searchParams: Promise<{ [key: string]: string | string[] | undefined }> }) {
   const prisma = getPrisma();
   const supabase = await createClient();
-  const { data: { session } } = await supabase.auth.getSession();
-  const userId = session?.user?.id;
+  const { data: { user } } = await supabase.auth.getUser();
+  const userId = user?.id;
   
   const resolvedParams = await searchParams;
   

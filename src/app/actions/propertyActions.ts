@@ -18,14 +18,14 @@ export async function getAgents() {
 
 export async function addProperty(prevState: any, formData: FormData) {
   const supabase = await createClient()
-  const { data: { session } } = await supabase.auth.getSession()
+  const { data: { user } } = await supabase.auth.getUser()
 
-  if (!session?.user) {
+  if (!user) {
     return { error: 'You must be logged in to post a property.' }
   }
 
   const adminEmails = process.env.ADMIN_EMAILS?.split(',') || [];
-  if (!adminEmails.includes(session.user.email || '')) {
+  if (!adminEmails.includes(user.email || '')) {
     return { error: 'You do not have permission to post a property. Admin access required.' }
   }
 
@@ -50,7 +50,7 @@ export async function addProperty(prevState: any, formData: FormData) {
     if (file.size > 0) {
       const fileExt = file.name.split('.').pop()
       const fileName = `${Math.random()}.${fileExt}`
-      const filePath = `${session.user.id}/${fileName}`
+      const filePath = `${user.id}/${fileName}`
 
       const { data, error: uploadError } = await supabase.storage
         .from('property-images')
@@ -75,7 +75,7 @@ export async function addProperty(prevState: any, formData: FormData) {
     if (file.size > 0) {
       const fileExt = file.name.split('.').pop()
       const fileName = `${Math.random()}.${fileExt}`
-      const filePath = `${session.user.id}/${fileName}`
+      const filePath = `${user.id}/${fileName}`
 
       const { data, error: uploadError } = await supabase.storage
         .from('property-images') // using same bucket for simplicity
@@ -126,14 +126,14 @@ export async function addProperty(prevState: any, formData: FormData) {
 
 export async function deleteProperty(propertyId: number) {
   const supabase = await createClient()
-  const { data: { session } } = await supabase.auth.getSession()
+  const { data: { user } } = await supabase.auth.getUser()
 
-  if (!session?.user) {
+  if (!user) {
     return { error: 'You must be logged in to delete a property.' }
   }
 
   const adminEmails = process.env.ADMIN_EMAILS?.split(',') || [];
-  if (!adminEmails.includes(session.user.email || '')) {
+  if (!adminEmails.includes(user.email || '')) {
     return { error: 'You do not have permission to delete a property. Admin access required.' }
   }
 

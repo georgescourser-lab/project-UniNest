@@ -8,13 +8,13 @@ export const dynamic = 'force-dynamic';
 
 export default async function FavoritesPage() {
   const supabase = await createClient();
-  const { data: { session } } = await supabase.auth.getSession();
+  const { data: { user } } = await supabase.auth.getUser();
   
-  if (!session?.user) {
+  if (!user) {
     redirect('/login');
   }
   
-  const userId = session.user.id;
+  const userId = user.id;
   const favorites = await getFavorites();
   const properties = favorites.map(f => f.properties);
 

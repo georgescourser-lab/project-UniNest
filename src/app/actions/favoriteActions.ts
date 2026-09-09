@@ -6,13 +6,13 @@ import { revalidatePath } from 'next/cache'
 
 export async function toggleFavorite(propertyId: number) {
   const supabase = await createClient()
-  const { data: { session } } = await supabase.auth.getSession()
+  const { data: { user } } = await supabase.auth.getUser()
 
-  if (!session?.user) {
+  if (!user) {
     return { error: 'You must be logged in to save properties.', isFavorite: false }
   }
 
-  const userId = session.user.id
+  const userId = user.id
   const prisma = getPrisma()
 
   try {
@@ -55,16 +55,16 @@ export async function toggleFavorite(propertyId: number) {
 
 export async function getFavorites() {
   const supabase = await createClient()
-  const { data: { session } } = await supabase.auth.getSession()
+  const { data: { user } } = await supabase.auth.getUser()
 
-  if (!session?.user) {
+  if (!user) {
     return []
   }
 
   const prisma = getPrisma()
   try {
     const favorites = await prisma.favorites.findMany({
-      where: { user_id: session.user.id },
+      where: { user_id: user.id },
       include: {
         properties: true
       },
