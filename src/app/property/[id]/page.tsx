@@ -72,7 +72,7 @@ export default async function PropertyDetailPage({ params }: PageProps) {
                 <div className="videos-container" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '2rem' }}>
                   <h4 style={{ fontSize: '1.1rem', color: 'var(--text-muted)' }}>Video Tours</h4>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
-                    {property.videos.map((vid, idx) => (
+                    {property.videos.map((vid: string, idx: number) => (
                       <video key={idx} controls style={{ width: '100%', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
                         <source src={vid} />
                         Your browser does not support the video tag.
@@ -84,7 +84,7 @@ export default async function PropertyDetailPage({ params }: PageProps) {
 
               {property.images && property.images.length > 0 && (
                 <div className="images-container" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '1rem' }}>
-                  {property.images.map((img, idx) => (
+                  {property.images.map((img: string, idx: number) => (
                     <img key={idx} src={img} alt={`${property.title} - image ${idx + 1}`} style={{ width: '100%', height: '150px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
                   ))}
                 </div>
