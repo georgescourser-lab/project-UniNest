@@ -1,22 +1,21 @@
 import Link from 'next/link';
-import { getPrisma } from '@/lib/prisma';
 import { createClient } from '@/utils/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
 export default async function Home() {
-  const prisma = getPrisma();
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   const userId = user?.id;
   
-  // Fetch featured properties (just taking the latest 6 for now)
-  const properties = await prisma.properties.findMany({
-    take: 6,
-    orderBy: {
-      id: 'desc'
-    }
-  });
+  // Fetch featured properties via Supabase REST API instead of Prisma to avoid port 5432/6543 timeouts
+  const { data: propertiesData, error } = await supabase
+    .from('properties')
+    .select('*')
+    .order('id', { ascending: false })
+    .limit(6);
+    
+  const properties = propertiesData || [];
 
   return (
     <>

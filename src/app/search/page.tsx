@@ -1,12 +1,10 @@
 import Link from 'next/link';
-import { getPrisma } from '@/lib/prisma';
 import { createClient } from '@/utils/supabase/server';
 import FilterSidebar from '@/components/FilterSidebar';
 
 export const dynamic = 'force-dynamic';
 
 export default async function SearchPage({ searchParams }: { searchParams: Promise<{ [key: string]: string | string[] | undefined }> }) {
-  const prisma = getPrisma();
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   const userId = user?.id;
@@ -27,36 +25,34 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   
   const location = resolvedParams.location as string;
 
-  const whereClause: any = {};
+  let query = supabase.from('properties').select('*');
   
   const typesArray = types as string[] | undefined;
   if (typesArray && typesArray.length > 0) {
-    whereClause.type = { in: typesArray };
+    query = query.in('type', typesArray);
   }
+  
+  const orConditions: string[] = [];
   
   const campusesArray = campuses as string[] | undefined;
   if (campusesArray && campusesArray.length > 0) {
-    whereClause.OR = campusesArray.map((campus: string) => ({
-      location: { contains: campus, mode: 'insensitive' }
-    }));
+    campusesArray.forEach((campus: string) => {
+      orConditions.push(`location.ilike.%${campus}%`);
+    });
   }
   
   if (location && location.trim() !== '') {
-    const locationCondition = { location: { contains: location, mode: 'insensitive' } };
-    if (whereClause.OR) {
-      whereClause.OR.push(locationCondition);
-    } else {
-      whereClause.OR = [locationCondition];
-    }
+    orConditions.push(`location.ilike.%${location}%`);
   }
 
-  // Fetch properties from the database
-  const properties = await prisma.properties.findMany({
-    where: whereClause,
-    orderBy: {
-      id: 'desc'
-    }
-  });
+  if (orConditions.length > 0) {
+    query = query.or(orConditions.join(','));
+  }
+
+  query = query.order('id', { ascending: false });
+
+  const { data: propertiesData } = await query;
+  const properties = propertiesData || [];
 
   return (
     <div className="container" style={{ paddingTop: '120px' }}>

@@ -1,12 +1,15 @@
-import { getPrisma } from '@/lib/prisma';
+import { createClient } from '@/utils/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AgentsPage() {
-  const prisma = getPrisma();
-  const agents = await prisma.agents.findMany({
-    orderBy: { name: 'asc' }
-  });
+  const supabase = await createClient();
+  const { data: agentsData } = await supabase
+    .from('agents')
+    .select('*')
+    .order('name', { ascending: true });
+    
+  const agents = agentsData || [];
 
   return (
     <div className="container" style={{ paddingTop: '120px', paddingBottom: '4rem' }}>

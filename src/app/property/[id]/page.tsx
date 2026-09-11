@@ -1,6 +1,5 @@
 import Link from 'next/link';
 import ReviewForm from './ReviewForm';
-import { getPrisma } from '@/lib/prisma';
 import { notFound, redirect } from 'next/navigation';
 import { deleteProperty } from '@/app/actions/propertyActions';
 import { createClient } from '@/utils/supabase/server';
@@ -13,18 +12,23 @@ type PageProps = {
 
 export default async function PropertyDetailPage({ params }: PageProps) {
   const { id } = await params;
-  const prisma = getPrisma();
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  const userId = user?.id;
   
-  const property = await prisma.properties.findUnique({
-    where: { id: parseInt(id) },
-    include: {
-      agents: true,
-      reviews: true
-    }
-  });
+  const adminEmails = process.env.ADMIN_EMAILS?.split(',') || [];
+  const isAdmin = user ? adminEmails.includes(user.email || '') : false;
+  
+  const { data: propertyData } = await supabase
+    .from('properties')
+    .select(`
+      *,
+      agents (*),
+      reviews (*)
+    `)
+    .eq('id', parseInt(id))
+    .single();
+
+  const property = propertyData;
 
   if (!property) return <div className="container" style={{paddingTop: '120px'}}>Property not found</div>;
 
@@ -164,13 +168,15 @@ export default async function PropertyDetailPage({ params }: PageProps) {
               </>
             )}
 
-            <form action={async () => {
-              'use server';
-              const res = await deleteProperty(property.id);
-              if (res?.success) redirect('/search');
-            }}>
-              <button type="submit" className="btn btn-secondary" style={{backgroundColor: '#ef4444', color: 'white', marginTop: '2rem', width: '100%', borderColor: '#ef4444'}}>Delete Property</button>
-            </form>
+            {isAdmin && (
+              <form action={async () => {
+                'use server';
+                const res = await deleteProperty(property.id);
+                if (res?.success) redirect('/search');
+              }}>
+                <button type="submit" className="btn btn-secondary" style={{backgroundColor: '#ef4444', color: 'white', marginTop: '2rem', width: '100%', borderColor: '#ef4444'}}>Delete Property</button>
+              </form>
+            )}
           </div>
         </aside>
       </div>
