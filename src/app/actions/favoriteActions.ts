@@ -1,6 +1,5 @@
 'use server'
 
-import { getPrisma } from '@/lib/prisma'
 import { createClient } from '@/utils/supabase/server'
 import { revalidatePath } from 'next/cache'
 
@@ -13,34 +12,30 @@ export async function toggleFavorite(propertyId: number) {
   }
 
   const userId = user.id
-  const prisma = getPrisma()
 
   try {
-    const existingFavorite = await prisma.favorites.findUnique({
-      where: {
-        user_id_property_id: {
-          user_id: userId,
-          property_id: propertyId
-        }
-      }
-    })
+    const { data: existingFavorite } = await supabase
+      .from('favorites')
+      .select('*')
+      .match({ user_id: userId, property_id: propertyId })
+      .single()
 
     if (existingFavorite) {
-      await prisma.favorites.delete({
-        where: { id: existingFavorite.id }
-      })
+      await supabase
+        .from('favorites')
+        .delete()
+        .eq('id', existingFavorite.id)
+
       revalidatePath('/')
       revalidatePath('/search')
       revalidatePath(`/property/${propertyId}`)
       revalidatePath('/favorites')
       return { success: true, isFavorite: false }
     } else {
-      await prisma.favorites.create({
-        data: {
-          user_id: userId,
-          property_id: propertyId
-        }
-      })
+      await supabase
+        .from('favorites')
+        .insert({ user_id: userId, property_id: propertyId })
+
       revalidatePath('/')
       revalidatePath('/search')
       revalidatePath(`/property/${propertyId}`)
@@ -61,16 +56,14 @@ export async function getFavorites() {
     return []
   }
 
-  const prisma = getPrisma()
   try {
-    const favorites = await prisma.favorites.findMany({
-      where: { user_id: user.id },
-      include: {
-        properties: true
-      },
-      orderBy: { created_at: 'desc' }
-    })
-    return favorites
+    const { data: favorites } = await supabase
+      .from('favorites')
+      .select('*, properties(*)')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+
+    return favorites || []
   } catch (error) {
     console.error('Error fetching favorites:', error)
     return []

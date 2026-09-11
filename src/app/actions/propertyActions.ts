@@ -1,18 +1,20 @@
 'use server'
 
-import { getPrisma } from '@/lib/prisma'
 import { createClient } from '@/utils/supabase/server'
 import { revalidatePath } from 'next/cache'
 
 export async function getAgents() {
-  const prisma = getPrisma()
-  const agents = await prisma.agents.findMany({
-    orderBy: { name: 'asc' }
-  })
+  const supabase = await createClient()
+  const { data: agents } = await supabase
+    .from('agents')
+    .select('*')
+    .order('name', { ascending: true })
   
-  return agents.map(agent => ({
+  if (!agents) return []
+  
+  return agents.map((agent: any) => ({
     ...agent,
-    rating: agent.rating ? agent.rating.toNumber() : null
+    rating: agent.rating ? Number(agent.rating) : null
   }))
 }
 
@@ -94,24 +96,24 @@ export async function addProperty(prevState: any, formData: FormData) {
     }
   }
 
-  const prisma = getPrisma()
-
   try {
-    const newProperty = await prisma.properties.create({
-      data: {
-        title,
-        type,
-        rent,
-        location,
-        distance,
-        description,
-        agent_id,
-        amenities,
-        images: uploadedImageUrls,
-        videos: uploadedVideoUrls,
-        image: uploadedImageUrls.length > 0 ? uploadedImageUrls[0] : null,
-      }
-    })
+    const { data: newProperty, error: insertError } = await supabase.from('properties').insert({
+      title,
+      type,
+      rent,
+      location,
+      distance,
+      description,
+      agent_id,
+      amenities,
+      images: uploadedImageUrls,
+      videos: uploadedVideoUrls,
+      image: uploadedImageUrls.length > 0 ? uploadedImageUrls[0] : null,
+    }).select().single()
+
+    if (insertError) {
+      throw insertError
+    }
 
     revalidatePath('/search')
     revalidatePath('/')
@@ -137,12 +139,12 @@ export async function deleteProperty(propertyId: number) {
     return { error: 'You do not have permission to delete a property. Admin access required.' }
   }
 
-  const prisma = getPrisma()
-
   try {
-    await prisma.properties.delete({
-      where: { id: propertyId }
-    })
+    const { error: deleteError } = await supabase.from('properties').delete().eq('id', propertyId)
+    
+    if (deleteError) {
+      throw deleteError
+    }
     
     revalidatePath('/search')
     revalidatePath('/')

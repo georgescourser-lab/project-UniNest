@@ -1,6 +1,6 @@
 'use server'
 
-import { getPrisma } from '@/lib/prisma'
+import { createClient } from '@/utils/supabase/server'
 import { revalidatePath } from 'next/cache'
 
 export async function addReview(formData: FormData) {
@@ -14,22 +14,19 @@ export async function addReview(formData: FormData) {
   }
 
   try {
-    const prisma = getPrisma()
+    const supabase = await createClient()
 
-    await prisma.reviews.create({
-      data: {
-        property_id,
-        client_name,
-        rating,
-        comment
-      }
+    const { error } = await supabase.from('reviews').insert({
+      property_id,
+      client_name,
+      rating,
+      comment
     })
+
+    if (error) throw error
 
     revalidatePath(`/property/${property_id}`)
   } catch (err) {
-    // Log full error server-side for debugging, but return a safe message to the client
-    // so we don't leak internal details in the response body.
-    // Use console.error so Next.js/Turbopack will include it in server logs.
     console.error('addReview error:', err)
     throw new Error('Unable to add review — server error. Check server logs.')
   }

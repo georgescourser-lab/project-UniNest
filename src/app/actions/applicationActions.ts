@@ -1,6 +1,5 @@
 'use server'
 
-import { getPrisma } from '@/lib/prisma'
 import { createClient } from '@/utils/supabase/server'
 import { revalidatePath } from 'next/cache'
 
@@ -13,28 +12,22 @@ export async function applyForProperty(propertyId: number) {
   }
 
   const userId = user.id
-  const prisma = getPrisma()
 
   try {
-    const existingApplication = await prisma.applications.findUnique({
-      where: {
-        user_id_property_id: {
-          user_id: userId,
-          property_id: propertyId
-        }
-      }
-    })
+    const { data: existingApplication } = await supabase
+      .from('applications')
+      .select('*')
+      .match({ user_id: userId, property_id: propertyId })
+      .single()
 
     if (existingApplication) {
       return { error: 'You have already applied for this property.', success: false, hasApplied: true }
     }
 
-    await prisma.applications.create({
-      data: {
-        user_id: userId,
-        property_id: propertyId,
-        status: 'Pending'
-      }
+    await supabase.from('applications').insert({
+      user_id: userId,
+      property_id: propertyId,
+      status: 'Pending'
     })
     
     revalidatePath(`/property/${propertyId}`)
