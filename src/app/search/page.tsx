@@ -6,8 +6,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function SearchPage({ searchParams }: { searchParams: Promise<{ [key: string]: string | string[] | undefined }> }) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  const userId = user?.id;
+
   
   const resolvedParams = await searchParams;
   

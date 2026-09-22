@@ -1,7 +1,5 @@
 import { createClient } from '@/utils/supabase/server';
 
-export const dynamic = 'force-dynamic';
-
 export default async function AgentsPage() {
   const supabase = await createClient();
   const { data: agentsData } = await supabase

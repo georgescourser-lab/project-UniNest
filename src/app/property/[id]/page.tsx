@@ -13,20 +13,26 @@ type PageProps = {
 export default async function PropertyDetailPage({ params }: PageProps) {
   const { id } = await params;
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
   
+  // Fetch user and property concurrently to reduce waterfall
+  const [
+    { data: { user } },
+    { data: propertyData }
+  ] = await Promise.all([
+    supabase.auth.getUser(),
+    supabase
+      .from('properties')
+      .select(`
+        *,
+        agents (*),
+        reviews (*)
+      `)
+      .eq('id', parseInt(id))
+      .single()
+  ]);
+
   const adminEmails = process.env.ADMIN_EMAILS?.split(',') || [];
   const isAdmin = user ? adminEmails.includes(user.email || '') : false;
-  
-  const { data: propertyData } = await supabase
-    .from('properties')
-    .select(`
-      *,
-      agents (*),
-      reviews (*)
-    `)
-    .eq('id', parseInt(id))
-    .single();
 
   const property = propertyData;
 

@@ -1,12 +1,9 @@
 import Link from 'next/link';
 import { createClient } from '@/utils/supabase/server';
 
-export const dynamic = 'force-dynamic';
-
 export default async function Home() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  const userId = user?.id;
+
   
   // Fetch featured properties via Supabase REST API instead of Prisma to avoid port 5432/6543 timeouts
   const { data: propertiesData, error } = await supabase
