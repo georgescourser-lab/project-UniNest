@@ -1,5 +1,7 @@
 import { createBrowserClient } from '@supabase/ssr'
 
+let browserClient: ReturnType<typeof createBrowserClient> | null = null
+
 export function createClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -8,8 +10,13 @@ export function createClient() {
     throw new Error('Missing Supabase client env vars. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (or NEXT_PUBLIC_SUPABASE_ANON_KEY).')
   }
 
-  return createBrowserClient(
-    supabaseUrl,
-    supabaseKey
-  )
+  if (typeof window === 'undefined') {
+    return createBrowserClient(supabaseUrl, supabaseKey)
+  }
+
+  if (!browserClient) {
+    browserClient = createBrowserClient(supabaseUrl, supabaseKey)
+  }
+
+  return browserClient
 }

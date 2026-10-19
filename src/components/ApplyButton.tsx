@@ -2,40 +2,36 @@
 
 import { useState } from 'react'
 import { applyForProperty } from '@/app/actions/applicationActions'
-import { useRouter } from 'next/navigation'
+import { useAuth } from '@/context/AuthContext'
 
 export default function ApplyButton({ propertyId, initialHasApplied, userId }: { propertyId: number, initialHasApplied: boolean, userId: string | undefined }) {
   const [hasApplied, setHasApplied] = useState(initialHasApplied)
   const [isPending, setIsPending] = useState(false)
-  const router = useRouter()
+  const { requireAuth } = useAuth()
 
   const handleApply = async () => {
     if (hasApplied) return
 
-    setIsPending(true)
-
-    try {
-      const result = await applyForProperty(propertyId)
-      if (result.error) {
-        const hasClientCookie = typeof document !== 'undefined' && (document.cookie.includes('uninest_user_client') || document.cookie.includes('uninest_user_session'));
-        if (result.error.toLowerCase().includes('logged in') && !userId && !hasClientCookie) {
-          router.push(`/login?next=${encodeURIComponent(typeof window !== 'undefined' ? window.location.pathname : `/property/${propertyId}`)}`)
-          return
+    await requireAuth(async () => {
+      setIsPending(true)
+      try {
+        const result = await applyForProperty(propertyId)
+        if (result.error) {
+          if (result.error.toLowerCase().includes('already applied')) {
+            setHasApplied(true)
+            return
+          }
+          alert(result.error)
         }
-        if (result.error.toLowerCase().includes('already applied')) {
+        if (result.hasApplied) {
           setHasApplied(true)
-          return
         }
-        alert(result.error)
+      } catch (err) {
+        alert('An error occurred. Please try again.')
+      } finally {
+        setIsPending(false)
       }
-      if (result.hasApplied) {
-        setHasApplied(true)
-      }
-    } catch (err) {
-      alert('An error occurred. Please try again.')
-    } finally {
-      setIsPending(false)
-    }
+    })
   }
 
   if (hasApplied) {

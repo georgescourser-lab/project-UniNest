@@ -2,12 +2,12 @@
 
 import { useState, useEffect } from 'react'
 import { toggleFavorite } from '@/app/actions/favoriteActions'
-import { useRouter } from 'next/navigation'
+import { useAuth } from '@/context/AuthContext'
 
 export default function FavoriteButton({ propertyId, initialIsFavorite, userId }: { propertyId: number, initialIsFavorite: boolean, userId: string | undefined }) {
   const [isFavorite, setIsFavorite] = useState(initialIsFavorite)
   const [isPending, setIsPending] = useState(false)
-  const router = useRouter()
+  const { requireAuth } = useAuth()
 
   useEffect(() => {
     setIsFavorite(initialIsFavorite)
@@ -16,34 +16,21 @@ export default function FavoriteButton({ propertyId, initialIsFavorite, userId }
   const handleToggle = async (e: React.MouseEvent) => {
     e.preventDefault() // Prevent navigation if button is inside a Link
     
-    // Optimistic update
-    setIsFavorite(!isFavorite)
-    setIsPending(true)
+    await requireAuth(async () => {
+      setIsFavorite(!isFavorite)
+      setIsPending(true)
 
-    try {
-      const result = await toggleFavorite(propertyId)
-      if (result.error) {
-        // Revert on error
-        setIsFavorite(isFavorite)
-        const hasClientCookie = typeof document !== 'undefined' && (document.cookie.includes('uninest_user_client') || document.cookie.includes('uninest_user_session'));
-        if (result.error.toLowerCase().includes('logged in') && !userId && !hasClientCookie) {
-          const returnUrl = typeof window !== 'undefined' ? window.location.pathname + window.location.search : '/search'
-          router.push(`/login?next=${encodeURIComponent(returnUrl)}`)
-        } else if (result.error.toLowerCase().includes('logged in')) {
-          console.warn('Favorite notice:', result.error)
-        } else {
-          alert(result.error)
+      try {
+        const result = await toggleFavorite(propertyId)
+        if (result.isFavorite !== undefined) {
+          setIsFavorite(result.isFavorite)
         }
-      } else {
-        // Ensure state matches server
-        setIsFavorite(result.isFavorite ?? false)
+      } catch (err) {
+        setIsFavorite(isFavorite)
+      } finally {
+        setIsPending(false)
       }
-    } catch (err) {
-      // Revert on error
-      setIsFavorite(isFavorite)
-    } finally {
-      setIsPending(false)
-    }
+    })
   }
 
   return (

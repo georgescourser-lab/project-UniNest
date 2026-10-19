@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import "./globals.css";
 import SiteNav from "@/components/SiteNav";
+import { AuthProvider } from "@/context/AuthContext";
 
 export const metadata: Metadata = {
   title: "UniNest | Student House Hunting",
@@ -24,11 +25,13 @@ export default function RootLayout({
         />
       </head>
       <body className="page-home min-h-full flex flex-col">
-        <SiteNav />
+        <AuthProvider>
+          <SiteNav />
 
-        <main className="flex-grow">
-          {children}
-        </main>
+          <main className="flex-grow">
+            {children}
+          </main>
+        </AuthProvider>
 
         {/* Footer */}
         <footer className="footer">

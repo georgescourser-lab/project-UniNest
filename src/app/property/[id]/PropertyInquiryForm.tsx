@@ -3,6 +3,7 @@
 import { useActionState, useState, useEffect } from 'react'
 import { submitPropertyInquiry, InquiryState } from '@/app/actions/inquiryActions'
 import { getCurrentUser } from '@/app/actions/authActions'
+import { useAuth } from '@/context/AuthContext'
 
 import Link from 'next/link'
 
@@ -20,15 +21,18 @@ export default function PropertyInquiryForm({
     {} as InquiryState
   )
 
-  const [currentUser, setCurrentUser] = useState<any>(user)
+  const { user: authUser } = useAuth()
+  const [currentUser, setCurrentUser] = useState<any>(user || authUser)
 
   useEffect(() => {
-    if (!currentUser) {
+    if (authUser) {
+      setCurrentUser(authUser)
+    } else if (!currentUser) {
       getCurrentUser().then((u) => {
         if (u) setCurrentUser(u)
       }).catch(() => {})
     }
-  }, [currentUser])
+  }, [authUser, currentUser])
 
 
 
