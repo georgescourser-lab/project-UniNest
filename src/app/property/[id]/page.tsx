@@ -7,6 +7,8 @@ import { getCurrentUser } from '@/app/actions/authActions';
 import { createClient } from '@/utils/supabase/server';
 import { FALLBACK_PROPERTIES } from '@/data/fallbackProperties';
 
+import { getFavorites } from '@/app/actions/favoriteActions';
+
 export const dynamic = 'force-dynamic';
 
 type PageProps = {
@@ -15,6 +17,7 @@ type PageProps = {
 
 export default async function PropertyDetailPage({ params }: PageProps) {
   const { id } = await params;
+  const propertyIdNum = parseInt(id);
   const supabase = await createClient();
   const user = await getCurrentUser();
   
@@ -25,17 +28,13 @@ export default async function PropertyDetailPage({ params }: PageProps) {
       agents (*),
       reviews (*)
     `)
-    .eq('id', parseInt(id))
-    .single();
+    .eq('id', propertyIdNum)
+    .maybeSingle();
 
   let isFavorite = false;
   if (user) {
-    const { data: fav } = await supabase
-      .from('favorites')
-      .select('id')
-      .match({ user_id: user.id, property_id: parseInt(id) })
-      .single();
-    if (fav) isFavorite = true;
+    const userFavorites = await getFavorites();
+    isFavorite = userFavorites.some((f: any) => f.property_id === propertyIdNum);
   }
 
   const adminEmails = process.env.ADMIN_EMAILS?.split(',') || [];

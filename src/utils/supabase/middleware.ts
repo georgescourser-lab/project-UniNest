@@ -37,9 +37,8 @@ export async function updateSession(request: NextRequest) {
 
   // IMPORTANT: Avoid writing any logic between createServerClient and
   // supabase.auth.getUser(). A simple mistake could make it very hard to debug
-  // issues with cross-origin requests, etc.
   const { data: { user } } = await supabase.auth.getUser()
-  const customSession = request.cookies.get('uninest_user_session')?.value
+  const customSession = request.cookies.get('uninest_user_session')?.value || request.cookies.get('uninest_user_client')?.value
   const isAuthenticated = !!user || !!customSession
 
   // Protect specific action routes that require authentication (browsing /search and /property is open to all)

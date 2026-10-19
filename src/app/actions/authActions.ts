@@ -7,6 +7,8 @@ import { redirect } from 'next/navigation'
 const SESSION_COOKIE_NAME = 'uninest_user_session'
 const THIRTY_DAYS = 60 * 60 * 24 * 30
 
+const CLIENT_COOKIE_NAME = 'uninest_user_client'
+
 async function setSessionCookie(user: { id: string; email: string; name?: string }) {
   try {
     const cookieStore = await cookies()
@@ -16,8 +18,18 @@ async function setSessionCookie(user: { id: string; email: string; name?: string
       name: user.name || user.email.split('@')[0],
       createdAt: Date.now()
     }
-    cookieStore.set(SESSION_COOKIE_NAME, encodeURIComponent(JSON.stringify(payload)), {
+    const encodedPayload = encodeURIComponent(JSON.stringify(payload))
+    // 1. Secure httpOnly session cookie for server components & actions
+    cookieStore.set(SESSION_COOKIE_NAME, encodedPayload, {
       httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: THIRTY_DAYS,
+    })
+    // 2. Client-accessible session cookie for client scripts (FavoriteButton, js/auth.js, etc.)
+    cookieStore.set(CLIENT_COOKIE_NAME, encodedPayload, {
+      httpOnly: false,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
@@ -32,6 +44,7 @@ async function clearSessionCookie() {
   try {
     const cookieStore = await cookies()
     cookieStore.delete(SESSION_COOKIE_NAME)
+    cookieStore.delete(CLIENT_COOKIE_NAME)
   } catch (err) {
     console.error('Failed to clear session cookie:', err)
   }
@@ -52,7 +65,7 @@ export async function getCurrentUser() {
   // 2. Fallback to unified persistent cookie
   try {
     const cookieStore = await cookies()
-    const rawCookie = cookieStore.get(SESSION_COOKIE_NAME)?.value
+    const rawCookie = cookieStore.get(SESSION_COOKIE_NAME)?.value || cookieStore.get(CLIENT_COOKIE_NAME)?.value
     if (rawCookie) {
       const parsed = JSON.parse(decodeURIComponent(rawCookie))
       if (parsed?.id && parsed?.email) {

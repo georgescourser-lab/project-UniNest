@@ -12,11 +12,73 @@
     _activeTab: 'signin', // 'signin' | 'signup'
     _activeMethod: 'password', // 'password' | 'magic'
 
+    getStoredUser() {
+      if (this._user) return this._user;
+
+      // 1. Check localStorage
+      try {
+        const stored = localStorage.getItem('uninest_user');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed && (parsed.id || parsed.email)) {
+            return {
+              id: parsed.id,
+              email: parsed.email,
+              user_metadata: { full_name: parsed.name, display_name: parsed.name }
+            };
+          }
+        }
+      } catch (e) {}
+
+      // 2. Check cookies (uninest_user_client or uninest_user_session)
+      try {
+        const cookiePairs = document.cookie.split(';');
+        for (let pair of cookiePairs) {
+          const [key, val] = pair.trim().split('=');
+          if ((key === 'uninest_user_client' || key === 'uninest_user_session') && val) {
+            const parsed = JSON.parse(decodeURIComponent(val));
+            if (parsed && (parsed.id || parsed.email)) {
+              return {
+                id: parsed.id,
+                email: parsed.email,
+                user_metadata: { full_name: parsed.name, display_name: parsed.name }
+              };
+            }
+          }
+        }
+      } catch (e) {}
+
+      return null;
+    },
+
+    saveClientSession(user) {
+      if (!user) return;
+      this._user = user;
+      const payload = {
+        id: user.id || `user_${Date.now()}`,
+        email: user.email || '',
+        name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Student',
+        createdAt: Date.now()
+      };
+      try {
+        localStorage.setItem('uninest_user', JSON.stringify(payload));
+        const encoded = encodeURIComponent(JSON.stringify(payload));
+        document.cookie = `uninest_user_client=${encoded}; path=/; max-age=2592000; SameSite=Lax`;
+        document.cookie = `uninest_user_session=${encoded}; path=/; max-age=2592000; SameSite=Lax`;
+      } catch (e) {}
+    },
+
     getUser() {
+      if (!this._user) {
+        this._user = this.getStoredUser();
+      }
       return this._user;
     },
 
     isAuthenticated() {
+      if (!this._user) {
+        this._user = this.getStoredUser();
+      }
       return !!this._user;
     },
 
@@ -310,6 +372,7 @@
     },
 
     onAuthSuccess(message = 'Signed in successfully!') {
+      this.saveClientSession(this._user);
       this.closeAuthModal();
       this.showToast(message, 'success');
       this.renderNavActions();
@@ -330,6 +393,9 @@
 
     async signOut() {
       try {
+        localStorage.removeItem('uninest_user');
+        document.cookie = 'uninest_user_client=; path=/; max-age=0; SameSite=Lax';
+        document.cookie = 'uninest_user_session=; path=/; max-age=0; SameSite=Lax';
         if (window.supabaseClient) {
           await window.supabaseClient.auth.signOut();
         }
@@ -547,15 +613,27 @@
   document.addEventListener('DOMContentLoaded', async () => {
     ensureAuthModalInDom();
 
-    // Check existing Supabase session
+    // 1. Check unified client session (cookie or localStorage)
+    const storedUser = UniAuth.getStoredUser();
+    if (storedUser) {
+      UniAuth._user = storedUser;
+    }
+
+    // 2. Check existing Supabase session
     try {
       if (window.supabaseClient && window.supabaseClient.auth) {
         const { data } = await window.supabaseClient.auth.getSession();
-        UniAuth._user = data?.session?.user || null;
+        if (data?.session?.user) {
+          UniAuth._user = data.session.user;
+          UniAuth.saveClientSession(UniAuth._user);
+        }
 
         // Listen for auth state changes (e.g. after Google OAuth redirect)
         window.supabaseClient.auth.onAuthStateChange((event, session) => {
-          UniAuth._user = session?.user || null;
+          if (session?.user) {
+            UniAuth._user = session.user;
+            UniAuth.saveClientSession(session.user);
+          }
           UniAuth.renderNavActions();
         });
       }

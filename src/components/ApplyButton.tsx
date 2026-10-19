@@ -17,8 +17,13 @@ export default function ApplyButton({ propertyId, initialHasApplied, userId }: {
     try {
       const result = await applyForProperty(propertyId)
       if (result.error) {
-        if (result.error.toLowerCase().includes('logged in')) {
+        const hasClientCookie = typeof document !== 'undefined' && (document.cookie.includes('uninest_user_client') || document.cookie.includes('uninest_user_session'));
+        if (result.error.toLowerCase().includes('logged in') && !userId && !hasClientCookie) {
           router.push(`/login?next=${encodeURIComponent(typeof window !== 'undefined' ? window.location.pathname : `/property/${propertyId}`)}`)
+          return
+        }
+        if (result.error.toLowerCase().includes('already applied')) {
+          setHasApplied(true)
           return
         }
         alert(result.error)

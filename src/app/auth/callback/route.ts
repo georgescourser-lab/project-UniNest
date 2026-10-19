@@ -41,8 +41,16 @@ export async function GET(request: Request) {
           name: data.user.user_metadata?.full_name || data.user.email?.split('@')[0],
           createdAt: Date.now()
         }
-        cookieStore.set('uninest_user_session', encodeURIComponent(JSON.stringify(payload)), {
+        const encodedPayload = encodeURIComponent(JSON.stringify(payload))
+        cookieStore.set('uninest_user_session', encodedPayload, {
           httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          path: '/',
+          maxAge: 60 * 60 * 24 * 30,
+        })
+        cookieStore.set('uninest_user_client', encodedPayload, {
+          httpOnly: false,
           secure: process.env.NODE_ENV === 'production',
           sameSite: 'lax',
           path: '/',

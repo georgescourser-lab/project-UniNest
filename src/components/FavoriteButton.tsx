@@ -25,9 +25,12 @@ export default function FavoriteButton({ propertyId, initialIsFavorite, userId }
       if (result.error) {
         // Revert on error
         setIsFavorite(isFavorite)
-        if (result.error.toLowerCase().includes('logged in')) {
+        const hasClientCookie = typeof document !== 'undefined' && (document.cookie.includes('uninest_user_client') || document.cookie.includes('uninest_user_session'));
+        if (result.error.toLowerCase().includes('logged in') && !userId && !hasClientCookie) {
           const returnUrl = typeof window !== 'undefined' ? window.location.pathname + window.location.search : '/search'
           router.push(`/login?next=${encodeURIComponent(returnUrl)}`)
+        } else if (result.error.toLowerCase().includes('logged in')) {
+          console.warn('Favorite notice:', result.error)
         } else {
           alert(result.error)
         }

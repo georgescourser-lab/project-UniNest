@@ -128,6 +128,16 @@ export default function AuthCard({ initialMode = 'email' }: AuthCardProps) {
         return;
       }
 
+      try {
+        const userObj = {
+          id: res.user?.id || `user_${Date.now()}`,
+          email: email.trim().toLowerCase(),
+          name: res.user?.user_metadata?.full_name || email.split('@')[0],
+        };
+        localStorage.setItem('uninest_user', JSON.stringify(userObj));
+        document.cookie = `uninest_user_client=${encodeURIComponent(JSON.stringify(userObj))}; path=/; max-age=2592000; SameSite=Lax`;
+      } catch (e) {}
+
       window.location.href = nextParam;
     } catch (err: any) {
       setErrorMsg(err.message || 'Authentication failed.');
@@ -155,6 +165,16 @@ export default function AuthCard({ initialMode = 'email' }: AuthCardProps) {
         setLoading(false);
         return;
       }
+
+      try {
+        const userObj = {
+          id: res.user?.id || `user_${Date.now()}`,
+          email: email.trim().toLowerCase(),
+          name: res.user?.user_metadata?.full_name || email.split('@')[0],
+        };
+        localStorage.setItem('uninest_user', JSON.stringify(userObj));
+        document.cookie = `uninest_user_client=${encodeURIComponent(JSON.stringify(userObj))}; path=/; max-age=2592000; SameSite=Lax`;
+      } catch (e) {}
 
       window.location.href = nextParam;
     } catch (err: any) {
