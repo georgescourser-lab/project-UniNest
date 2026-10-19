@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" fill="none">
+  <rect width="800" height="600" rx="32" fill="#dbeafe"/>
+  <rect x="110" y="210" width="580" height="270" rx="24" fill="#ffffff"/>
+  <path d="M150 240L400 110l250 130" fill="#93c5fd"/>
+  <rect x="185" y="300" width="110" height="180" rx="14" fill="#eff6ff"/>
+  <rect x="340" y="300" width="120" height="85" rx="12" fill="#eff6ff"/>
+  <rect x="500" y="300" width="110" height="180" rx="14" fill="#eff6ff"/>
+  <rect x="365" y="420" width="70" height="60" rx="10" fill="#bfdbfe"/>
+  <circle cx="400" cy="430" r="8" fill="#3b82f6"/>
+  <text x="400" y="560" text-anchor="middle" font-family="Arial, sans-serif" font-size="30" fill="#1e293b">Cozy Student Nest</text>
+</svg>

@@ -1,22 +1,24 @@
 import Link from 'next/link';
 import { getFavorites } from '@/app/actions/favoriteActions';
 import FavoriteButton from '@/components/FavoriteButton';
-import { createClient } from '@/utils/supabase/server';
+import { getCurrentUser } from '@/app/actions/authActions';
+import { FALLBACK_PROPERTIES } from '@/data/fallbackProperties';
 import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
 export default async function FavoritesPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
   
   if (!user) {
-    redirect('/login');
+    redirect('/login?next=/favorites');
   }
   
   const userId = user.id;
   const favorites = await getFavorites();
-  const properties = favorites.map(f => f.properties);
+  const properties = favorites
+    .map((f: any) => f.properties || FALLBACK_PROPERTIES.find(p => p.id === f.property_id))
+    .filter(Boolean);
 
   return (
     <div className="container" style={{ paddingTop: '120px', minHeight: '60vh' }}>

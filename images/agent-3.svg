@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" fill="none">
+  <rect width="400" height="400" rx="200" fill="#fee2e2"/>
+  <circle cx="200" cy="150" r="72" fill="#ffffff"/>
+  <path d="M92 330c24-52 76-84 108-84s84 32 108 84" fill="#ffffff"/>
+  <text x="200" y="380" text-anchor="middle" font-family="Arial, sans-serif" font-size="24" fill="#1e293b">Mary</text>
+</svg>

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" fill="none">
+  <rect width="800" height="600" rx="32" fill="#ecfccb"/>
+  <rect x="90" y="180" width="620" height="300" rx="28" fill="#ffffff"/>
+  <rect x="145" y="240" width="160" height="170" rx="18" fill="#dcfce7"/>
+  <rect x="335" y="240" width="130" height="85" rx="14" fill="#dcfce7"/>
+  <rect x="335" y="335" width="130" height="75" rx="14" fill="#dcfce7"/>
+  <rect x="490" y="240" width="150" height="170" rx="18" fill="#dcfce7"/>
+  <text x="400" y="560" text-anchor="middle" font-family="Arial, sans-serif" font-size="30" fill="#1e293b">Modern Student Home</text>
+</svg>

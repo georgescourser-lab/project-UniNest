@@ -31,9 +31,24 @@ export async function GET(request: Request) {
       }
     )
 
-    const { error } = await supabase.auth.exchangeCodeForSession(code)
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code)
     
     if (!error) {
+      if (data?.user) {
+        const payload = {
+          id: data.user.id,
+          email: data.user.email?.toLowerCase() || '',
+          name: data.user.user_metadata?.full_name || data.user.email?.split('@')[0],
+          createdAt: Date.now()
+        }
+        cookieStore.set('uninest_user_session', encodeURIComponent(JSON.stringify(payload)), {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          path: '/',
+          maxAge: 60 * 60 * 24 * 30,
+        })
+      }
       return NextResponse.redirect(`${origin}${next}`)
     }
   }

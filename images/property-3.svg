@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" fill="none">
+  <rect width="800" height="600" rx="32" fill="#fee2e2"/>
+  <rect x="120" y="200" width="560" height="260" rx="28" fill="#ffffff"/>
+  <rect x="160" y="250" width="180" height="160" rx="18" fill="#fecaca"/>
+  <rect x="360" y="250" width="80" height="160" rx="18" fill="#fecaca"/>
+  <rect x="460" y="250" width="180" height="160" rx="18" fill="#fecaca"/>
+  <text x="400" y="560" text-anchor="middle" font-family="Arial, sans-serif" font-size="30" fill="#1e293b">Shared 2-Bedroom</text>
+</svg>

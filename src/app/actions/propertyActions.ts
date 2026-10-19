@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/utils/supabase/server'
+import { getCurrentUser } from '@/app/actions/authActions'
 import { revalidatePath } from 'next/cache'
 
 export async function getAgents() {
@@ -19,17 +20,13 @@ export async function getAgents() {
 }
 
 export async function addProperty(prevState: any, formData: FormData) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getCurrentUser()
 
   if (!user) {
     return { error: 'You must be logged in to post a property.' }
   }
 
-  const adminEmails = process.env.ADMIN_EMAILS?.split(',') || [];
-  if (!adminEmails.includes(user.email || '')) {
-    return { error: 'You do not have permission to post a property. Admin access required.' }
-  }
+  const supabase = await createClient()
 
   const title = formData.get('title') as string
   const type = formData.get('type') as string
@@ -46,35 +43,46 @@ export async function addProperty(prevState: any, formData: FormData) {
     return { error: 'Please fill out all required fields.' }
   }
 
+  const imageUrlRaw = (formData.get('image_urls') as string) || (formData.get('image_url') as string) || ''
+  const providedUrls = imageUrlRaw
+    .split(/[\n,]+/)
+    .map(u => u.trim())
+    .filter(u => u.startsWith('http://') || u.startsWith('https://'))
+
+  const validFiles = files.filter(f => f && f.size > 0)
+  if (validFiles.length === 0 && providedUrls.length === 0) {
+    return { error: 'Please provide at least one property image by uploading a file or entering an image URL.' }
+  }
+
   const uploadedImageUrls: string[] = []
 
-  for (const file of files) {
-    if (file.size > 0) {
-      const fileExt = file.name.split('.').pop()
-      const fileName = `${Math.random()}.${fileExt}`
-      const filePath = `${user.id}/${fileName}`
+  for (const file of validFiles) {
+    const fileExt = file.name.split('.').pop()
+    const fileName = `${Math.random()}.${fileExt}`
+    const filePath = `${user.id}/${fileName}`
 
-      const { data, error: uploadError } = await supabase.storage
-        .from('property-images')
-        .upload(filePath, file)
+    const { data, error: uploadError } = await supabase.storage
+      .from('property-images')
+      .upload(filePath, file)
 
-      if (uploadError) {
-        console.error('Error uploading image:', uploadError)
-        return { error: `Failed to upload image: ${uploadError.message}` }
-      }
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('property-images')
-        .getPublicUrl(filePath)
-
-      uploadedImageUrls.push(publicUrl)
+    if (uploadError) {
+      console.error('Error uploading image:', uploadError)
+      return { error: `Failed to upload image: ${uploadError.message}` }
     }
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('property-images')
+      .getPublicUrl(filePath)
+
+    uploadedImageUrls.push(publicUrl)
   }
+
+  const allImages = [...uploadedImageUrls, ...providedUrls]
 
   const uploadedVideoUrls: string[] = []
 
   for (const file of videoFiles) {
-    if (file.size > 0) {
+    if (file && file.size > 0) {
       const fileExt = file.name.split('.').pop()
       const fileName = `${Math.random()}.${fileExt}`
       const filePath = `${user.id}/${fileName}`
@@ -106,9 +114,9 @@ export async function addProperty(prevState: any, formData: FormData) {
       description,
       agent_id,
       amenities,
-      images: uploadedImageUrls,
+      images: allImages,
       videos: uploadedVideoUrls,
-      image: uploadedImageUrls.length > 0 ? uploadedImageUrls[0] : null,
+      image: allImages.length > 0 ? allImages[0] : null,
     }).select().single()
 
     if (insertError) {
@@ -127,17 +135,13 @@ export async function addProperty(prevState: any, formData: FormData) {
 }
 
 export async function deleteProperty(propertyId: number) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getCurrentUser()
 
   if (!user) {
     return { error: 'You must be logged in to delete a property.' }
   }
 
-  const adminEmails = process.env.ADMIN_EMAILS?.split(',') || [];
-  if (!adminEmails.includes(user.email || '')) {
-    return { error: 'You do not have permission to delete a property. Admin access required.' }
-  }
+  const supabase = await createClient()
 
   try {
     const { error: deleteError } = await supabase.from('properties').delete().eq('id', propertyId)

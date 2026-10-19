@@ -1,18 +1,24 @@
 import Link from 'next/link';
 import { createClient } from '@/utils/supabase/server';
+import { getCurrentUser } from '@/app/actions/authActions';
+import { getFavorites } from '@/app/actions/favoriteActions';
+import FavoriteButton from '@/components/FavoriteButton';
+import { FALLBACK_PROPERTIES } from '@/data/fallbackProperties';
 
 export default async function Home() {
   const supabase = await createClient();
+  const user = await getCurrentUser();
+  const userFavorites = user ? await getFavorites() : [];
+  const favoriteIds = new Set(userFavorites.map((f: any) => f.property_id));
 
-  
   // Fetch featured properties via Supabase REST API instead of Prisma to avoid port 5432/6543 timeouts
-  const { data: propertiesData, error } = await supabase
+  const { data: propertiesData } = await supabase
     .from('properties')
     .select('*')
     .order('id', { ascending: false })
     .limit(6);
     
-  const properties = propertiesData || [];
+  const properties = (propertiesData && propertiesData.length > 0) ? propertiesData : FALLBACK_PROPERTIES;
 
   return (
     <>
@@ -71,8 +77,8 @@ export default async function Home() {
               <p>View photos, check amenities, and save your favourite listings.</p>
             </div>
             <div className="step-card animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
-              <h3>3. Contact Agent</h3>
-              <p>Connect instantly via WhatsApp or Email to arrange a viewing.</p>
+              <h3>3. Request Viewing</h3>
+              <p>Submit an inquiry to an authorized agent who coordinates an accompanied in-person viewing.</p>
             </div>
           </div>
         </div>
@@ -90,29 +96,32 @@ export default async function Home() {
 
           <div className="carousel-container" id="featured-listings">
             {properties.map((property) => (
-              <Link key={property.id} href={`/property/${property.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-                <div className="property-card carousel-item">
-                  <div className="property-image">
+              <div key={property.id} className="property-card carousel-item">
+                <div className="property-image" style={{ position: 'relative', display: 'block' }}>
+                  <Link href={`/property/${property.id}`} style={{ display: 'block', height: '100%' }}>
                     <img src={property.image || (property.images && property.images[0]) || 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=500&q=80'} alt={property.title || 'Property'} />
-                    <div className="property-badges">
-                      <span className="badge badge-primary">{property.type}</span>
-                    </div>
+                  </Link>
+                  <div className="property-badges">
+                    <span className="badge badge-primary">{property.type}</span>
                   </div>
+                  <FavoriteButton propertyId={property.id} userId={user?.id} initialIsFavorite={favoriteIds.has(property.id)} />
+                </div>
+                <Link href={`/property/${property.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
                   <div className="property-content">
                     <div className="property-price">{property.rent}<span>/month</span></div>
-                  <h3 className="property-title">{property.title}</h3>
-                  <div className="property-location">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-                    {property.location}
-                  </div>
-                  <div className="property-amenities">
-                    <div className="amenity">
-                       {property.amenities && property.amenities.slice(0,2).join(' • ')}
+                    <h3 className="property-title">{property.title}</h3>
+                    <div className="property-location">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                      {property.location}
+                    </div>
+                    <div className="property-amenities">
+                      <div className="amenity">
+                         {property.amenities && property.amenities.slice(0,2).join(' • ')}
+                      </div>
                     </div>
                   </div>
-                </div>
+                </Link>
               </div>
-              </Link>
             ))}
             {properties.length === 0 && (
               <p>No featured listings found.</p>

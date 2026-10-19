@@ -23,8 +23,8 @@ export default async function AgentsPage() {
               <span>★ {agent.rating?.toString()} ({agent.reviews} reviews)</span>
               <span>{agent.listings_count} Listings</span>
             </div>
-            <a href={`https://wa.me/${agent.whatsapp}`} className="btn btn-primary" target="_blank" rel="noopener noreferrer">
-              WhatsApp
+            <a href={`/search`} className="btn btn-primary" style={{ textAlign: 'center' }}>
+              View Agent Listings
             </a>
           </div>
         ))}

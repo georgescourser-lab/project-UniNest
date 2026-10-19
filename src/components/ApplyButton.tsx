@@ -10,11 +10,6 @@ export default function ApplyButton({ propertyId, initialHasApplied, userId }: {
   const router = useRouter()
 
   const handleApply = async () => {
-    if (!userId) {
-      router.push('/login')
-      return
-    }
-
     if (hasApplied) return
 
     setIsPending(true)
@@ -22,6 +17,10 @@ export default function ApplyButton({ propertyId, initialHasApplied, userId }: {
     try {
       const result = await applyForProperty(propertyId)
       if (result.error) {
+        if (result.error.toLowerCase().includes('logged in')) {
+          router.push(`/login?next=${encodeURIComponent(typeof window !== 'undefined' ? window.location.pathname : `/property/${propertyId}`)}`)
+          return
+        }
         alert(result.error)
       }
       if (result.hasApplied) {

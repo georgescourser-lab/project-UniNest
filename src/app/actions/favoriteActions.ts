@@ -1,24 +1,25 @@
 'use server'
 
 import { createClient } from '@/utils/supabase/server'
+import { getCurrentUser } from '@/app/actions/authActions'
 import { revalidatePath } from 'next/cache'
 
 export async function toggleFavorite(propertyId: number) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getCurrentUser()
 
   if (!user) {
     return { error: 'You must be logged in to save properties.', isFavorite: false }
   }
 
   const userId = user.id
+  const supabase = await createClient()
 
   try {
     const { data: existingFavorite } = await supabase
       .from('favorites')
       .select('*')
       .match({ user_id: userId, property_id: propertyId })
-      .single()
+      .maybeSingle()
 
     if (existingFavorite) {
       await supabase
@@ -49,12 +50,13 @@ export async function toggleFavorite(propertyId: number) {
 }
 
 export async function getFavorites() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getCurrentUser()
 
   if (!user) {
     return []
   }
+
+  const supabase = await createClient()
 
   try {
     const { data: favorites } = await supabase

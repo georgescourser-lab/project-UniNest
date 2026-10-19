@@ -1,13 +1,10 @@
 import Link from 'next/link';
-import { createClient } from '@/utils/supabase/server';
 import NavLinks from './NavLinks';
-import { logout } from '@/app/actions/authActions';
+import { getCurrentUser, logout } from '@/app/actions/authActions';
 import MobileMenuCloser from './MobileMenuCloser';
 
 export default async function SiteNav() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  const sessionUser = user;
+  const sessionUser = await getCurrentUser();
   
   const adminEmails = process.env.ADMIN_EMAILS?.split(',') || [];
   const isAdmin = sessionUser ? adminEmails.includes(sessionUser.email || '') : false;
@@ -18,7 +15,7 @@ export default async function SiteNav() {
       <div className="container nav-container">
         <input id="site-nav-toggle" className="nav-toggle" type="checkbox" />
         <Link href="/" className="logo">
-          <img src="/images/logo.png.jpeg" alt="UniNest Logo" style={{ height: '2rem', width: 'auto' }} />
+          <img src="/images/logo.jpg" alt="UniNest Logo" style={{ height: '2rem', width: 'auto', borderRadius: '4px' }} />
           UniNest
         </Link>
         <label className="mobile-menu-btn" htmlFor="site-nav-toggle" aria-label="Toggle menu" aria-controls="site-navigation">
@@ -30,7 +27,7 @@ export default async function SiteNav() {
           </svg>
         </label>
         <div id="site-navigation" className="nav-menu">
-          <NavLinks isAdmin={isAdmin} />
+          <NavLinks isLoggedIn={!!sessionUser} isAdmin={isAdmin} />
           <div className="nav-actions">
             {sessionUser ? (
               <>

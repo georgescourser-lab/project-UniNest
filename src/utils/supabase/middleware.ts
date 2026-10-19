@@ -39,14 +39,17 @@ export async function updateSession(request: NextRequest) {
   // supabase.auth.getUser(). A simple mistake could make it very hard to debug
   // issues with cross-origin requests, etc.
   const { data: { user } } = await supabase.auth.getUser()
+  const customSession = request.cookies.get('uninest_user_session')?.value
+  const isAuthenticated = !!user || !!customSession
 
-  // Protect specific routes
-  const protectedRoutes = ['/search', '/property']
+  // Protect specific action routes that require authentication (browsing /search and /property is open to all)
+  const protectedRoutes = ['/post-property']
   const isProtectedRoute = protectedRoutes.some((route) => request.nextUrl.pathname.startsWith(route))
 
-  if (isProtectedRoute && !user) {
+  if (isProtectedRoute && !isAuthenticated) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
+    url.searchParams.set('next', request.nextUrl.pathname)
     return NextResponse.redirect(url)
   }
 

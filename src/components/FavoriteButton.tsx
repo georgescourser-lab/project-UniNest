@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { toggleFavorite } from '@/app/actions/favoriteActions'
 import { useRouter } from 'next/navigation'
 
@@ -9,14 +9,13 @@ export default function FavoriteButton({ propertyId, initialIsFavorite, userId }
   const [isPending, setIsPending] = useState(false)
   const router = useRouter()
 
+  useEffect(() => {
+    setIsFavorite(initialIsFavorite)
+  }, [initialIsFavorite])
+
   const handleToggle = async (e: React.MouseEvent) => {
     e.preventDefault() // Prevent navigation if button is inside a Link
     
-    if (!userId) {
-      router.push('/login')
-      return
-    }
-
     // Optimistic update
     setIsFavorite(!isFavorite)
     setIsPending(true)
@@ -26,7 +25,12 @@ export default function FavoriteButton({ propertyId, initialIsFavorite, userId }
       if (result.error) {
         // Revert on error
         setIsFavorite(isFavorite)
-        alert(result.error)
+        if (result.error.toLowerCase().includes('logged in')) {
+          const returnUrl = typeof window !== 'undefined' ? window.location.pathname + window.location.search : '/search'
+          router.push(`/login?next=${encodeURIComponent(returnUrl)}`)
+        } else {
+          alert(result.error)
+        }
       } else {
         // Ensure state matches server
         setIsFavorite(result.isFavorite ?? false)

@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@300..700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap');
 @import "tailwindcss";
 
 :root {
@@ -18,7 +18,7 @@
   --color-danger: #ef4444;
 
   /* Typography */
-  --font-main: 'Fredoka', sans-serif;
+  --font-main: var(--font-dm-sans, 'DM Sans'), 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   
   /* Layout & Spacing */
   --max-width: 1200px;
@@ -39,10 +39,17 @@
 }
 
 /* Reset & Base */
-* {
+*, *::before, *::after {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 body {
@@ -51,6 +58,31 @@ body {
   color: var(--color-dark);
   line-height: 1.6;
   overflow-x: hidden;
+}
+
+h1, h2, h3, h4, h5, h6, p, span, a, label, strong, b, em, i, li, td, th {
+  font-family: inherit;
+}
+
+::selection {
+  background-color: rgba(59, 130, 246, 0.2);
+  color: var(--color-dark);
+}
+
+/* Modern Webkit Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-bg);
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: var(--border-radius-full);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 
 a {
@@ -69,9 +101,13 @@ img {
   display: block;
 }
 
-button, input, select {
+button, input, select, textarea {
   font-family: var(--font-main);
   border: none;
+  outline: none;
+}
+
+input:focus, select:focus, textarea:focus {
   outline: none;
 }
 
@@ -107,7 +143,6 @@ button, input, select {
 
 .btn-primary:hover {
   background-color: var(--color-primary-hover);
-  transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
 }
 
@@ -324,13 +359,12 @@ button, input, select {
   border-radius: var(--border-radius);
   overflow: hidden;
   box-shadow: var(--shadow-sm);
-  transition: all var(--transition-normal);
+  transition: box-shadow var(--transition-normal);
   display: flex;
   flex-direction: column;
 }
 
 .property-card:hover {
-  transform: translateY(-4px);
   box-shadow: var(--shadow-md);
 }
 
@@ -568,9 +602,149 @@ button, input, select {
 .footer-bottom {
   border-top: 1px solid var(--color-gray-light);
   padding-top: 2rem;
-  text-align: center;
+  padding-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1.5rem;
   color: var(--color-gray);
   font-size: 0.875rem;
+}
+
+.footer-bottom-left {
+  color: var(--color-gray);
+  font-size: 0.9rem;
+}
+
+.footer-bottom-center {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+}
+
+.footer-bottom-center a,
+.footer-legal-link {
+  color: var(--color-gray);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  font-size: 0.9rem;
+  transition: color var(--transition-fast);
+}
+
+.footer-bottom-center a:hover,
+.footer-legal-link:hover {
+  color: #ffffff;
+}
+
+.footer-bottom-right,
+.footer-social-icons {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.footer-social-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  opacity: 0.85;
+  transition: opacity var(--transition-fast), transform var(--transition-fast), color var(--transition-fast);
+  text-decoration: none;
+}
+
+.footer-social-icon:hover {
+  opacity: 1;
+  transform: translateY(-2px);
+  color: #ffffff;
+}
+
+.footer-social-icon.facebook:hover {
+  color: #1877f2;
+}
+
+.footer-social-icon.instagram:hover {
+  color: #e1306c;
+}
+
+.footer-social-icon.twitter:hover {
+  color: #1da1f2;
+}
+
+.footer-social-icon.tiktok:hover {
+  color: #ff0050;
+}
+
+@media (max-width: 768px) {
+  .footer-bottom {
+    flex-direction: column;
+    text-align: center;
+    gap: 1.25rem;
+  }
+  .footer-bottom-center {
+    justify-content: center;
+    gap: 1.25rem;
+  }
+  .footer-bottom-right {
+    justify-content: center;
+  }
+}
+
+/* Footer Social Video Viewing Channels */
+.footer-socials {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.footer-social-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.85rem;
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 9999px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.footer-social-btn svg {
+  flex-shrink: 0;
+}
+
+.footer-social-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+}
+
+.footer-social-btn.tiktok:hover {
+  border-color: #ff0050;
+  box-shadow: 0 0 10px rgba(255, 0, 80, 0.35);
+}
+
+.footer-social-btn.instagram:hover {
+  border-color: #e1306c;
+  box-shadow: 0 0 10px rgba(225, 48, 108, 0.35);
+}
+
+.footer-social-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  margin-left: 0.25rem;
 }
 
 /* Auth Pages */
@@ -696,12 +870,12 @@ button, input, select {
 
 /* Animations */
 @keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .animate-fade-in-up {
-  animation: fadeInUp 0.6s ease-out forwards;
+  animation: fadeInUp 0.4s ease-out forwards;
 }
 
 /* Media Queries */
@@ -987,11 +1161,10 @@ button, input, select {
   padding: 2rem;
   text-align: center;
   box-shadow: var(--shadow-sm);
-  transition: transform var(--transition-normal);
+  transition: box-shadow var(--transition-normal);
 }
 
 .agent-card:hover {
-  transform: translateY(-4px);
   box-shadow: var(--shadow-md);
 }
 

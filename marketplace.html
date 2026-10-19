@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Student Second-Hand Marketplace | UniNest Kenya</title>
+  <meta name="description" content="Buy and sell pre-loved dorm essentials near Kenyan universities with agent-supervised safe handovers. No direct messaging or unverified meetings.">
+  
+  <!-- SEO & Social Meta Tags -->
+  <meta property="og:title" content="Agent-Supervised Student Marketplace | UniNest">
+  <meta property="og:description" content="Safe, agent-facilitated campus second-hand marketplace. Inspections, viewings, and handovers coordinated by verified campus agents.">
+  <meta property="og:image" content="https://uninest.co.ke/images/hero-bg.jpg">
+  <meta property="og:type" content="website">
+  <link rel="icon" type="image/jpeg" href="images/logo.jpg">
+  <link rel="canonical" href="https://uninest.co.ke/marketplace.html">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="page-marketplace">
+
+  <!-- Navbar -->
+  <nav class="navbar scrolled">
+    <div class="container nav-container">
+      <a href="index.html" class="logo">
+        <img src="images/logo.jpg" alt="UniNest Logo" style="height: 2rem; width: auto;" />
+        UniNest
+      </a>
+      <button class="mobile-menu-btn" aria-label="Toggle menu" onclick="this.parentElement.classList.toggle('mobile-menu-open')">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+      </button>
+      <div class="nav-links">
+        <a href="index.html">Home</a>
+        <a href="search.html">Properties</a>
+        <a href="agents.html">Agents</a>
+        <a href="marketplace.html" class="active">Marketplace</a>
+      </div>
+      <div class="nav-actions">
+        <!-- Injected dynamically by auth.js -->
+        <button type="button" class="btn btn-secondary" onclick="UniMarketplace.openStatusTrackerModal()" style="font-size: 0.85rem; padding: 0.45rem 0.85rem; margin-right: 0.35rem;">Track Deal</button>
+        <button type="button" class="btn btn-secondary" onclick="UniMarketplace.openPostModal()" style="margin-right: 0.35rem; font-size: 0.85rem; padding: 0.45rem 0.85rem;">+ List Item</button>
+        <button type="button" class="btn btn-primary" onclick="UniMarketplace.openAgentPortal()" style="font-size: 0.85rem; padding: 0.45rem 0.85rem;">Agent Portal</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Marketplace Header / Hero Section -->
+  <header style="background: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%); padding-top: 130px; padding-bottom: 2.5rem; border-bottom: 1px solid #cbd5e1;">
+    <div class="container">
+      <div style="display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 1.5rem; margin-bottom: 2rem;">
+        <div>
+          <div style="display: inline-flex; align-items: center; gap: 0.5rem; background: #e0f2fe; color: #0284c7; padding: 0.35rem 0.85rem; border-radius: 9999px; font-size: 0.82rem; font-weight: 600; margin-bottom: 0.75rem;">
+            <span>🛡️</span> 100% Agent-Supervised • Zero Direct Buyer-to-Seller Risk
+          </div>
+          <h1 style="font-size: 2.3rem; font-weight: 700; color: var(--color-dark); margin-bottom: 0.5rem; line-height: 1.2;">
+            Student Second-Hand Marketplace
+          </h1>
+          <p style="color: var(--color-gray); font-size: 1.05rem; max-width: 680px;">
+            Buy pre-loved mini fridges, study tables, gas cylinders, and books near Kenyan campuses. All inspections and handovers are coordinated and verified by authorized UniNest campus agents.
+          </p>
+        </div>
+        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+          <button type="button" class="btn btn-secondary" onclick="UniMarketplace.openStatusTrackerModal()" style="padding: 0.75rem 1.25rem; font-weight: 600; display: inline-flex; align-items: center; gap: 0.5rem;">
+            🔍 Check Inquiry Status
+          </button>
+          <button type="button" class="btn btn-primary" onclick="UniMarketplace.openPostModal()" style="padding: 0.75rem 1.5rem; font-weight: 600; display: inline-flex; align-items: center; gap: 0.5rem; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            List an Item via Agent
+          </button>
+        </div>
+      </div>
+
+      <!-- Filters & Search Controls -->
+      <div class="marketplace-filter-section">
+        <div class="marketplace-search-row">
+          <div class="marketplace-search-input-wrap">
+            <svg class="marketplace-search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <input type="text" id="market-search" placeholder="Search verified items (e.g. Ramtons fridge, wooden desk, gas cylinder, calculus)...">
+          </div>
+          <div class="marketplace-select-wrap">
+            <select id="market-campus">
+              <option value="All">All Campuses</option>
+              <option value="UoN">University of Nairobi (UoN)</option>
+              <option value="KU">Kenyatta University (KU)</option>
+              <option value="JKUAT">JKUAT Main Campus</option>
+              <option value="Strathmore">Strathmore University</option>
+              <option value="USIU">USIU Africa</option>
+              <option value="Daystar">Daystar University</option>
+              <option value="MKU">Mount Kenya University (MKU)</option>
+              <option value="Moi">Moi University</option>
+              <option value="Egerton">Egerton University</option>
+            </select>
+          </div>
+          <div class="marketplace-select-wrap">
+            <select id="market-condition">
+              <option value="All">Any Condition</option>
+              <option value="Like New">Like New / Mint</option>
+              <option value="Gently Used">Gently Used</option>
+              <option value="Good Condition">Good Condition</option>
+            </select>
+          </div>
+          <div class="marketplace-select-wrap">
+            <select id="market-sort">
+              <option value="featured">Featured First</option>
+              <option value="price-asc">Price: Low to High</option>
+              <option value="price-desc">Price: High to Low</option>
+              <option value="newest">Newest First</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Category Pills -->
+        <div class="marketplace-category-pills" id="market-category-pills">
+          <button type="button" class="marketplace-pill active" data-category="All">All Items</button>
+          <button type="button" class="marketplace-pill" data-category="Appliances">Appliances</button>
+          <button type="button" class="marketplace-pill" data-category="Furniture">Furniture</button>
+          <button type="button" class="marketplace-pill" data-category="Academic">Academic & Tech</button>
+          <button type="button" class="marketplace-pill" data-category="Kitchen">Kitchen & Gas</button>
+          <button type="button" class="marketplace-pill" data-category="Bedding">Bedding & Mattresses</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Marketplace Listings Section -->
+  <main style="padding: 3rem 0; min-height: 50vh;">
+    <div class="container">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 0.5rem;">
+        <span id="market-count" style="font-weight: 600; color: var(--color-dark); font-size: 1rem;">Loading verified items...</span>
+        <div style="display: flex; gap: 1rem; align-items: center;">
+          <span style="font-size: 0.85rem; color: #64748b; display: inline-flex; align-items: center; gap: 0.35rem;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            Contact details protected
+          </span>
+          <button type="button" onclick="UniMarketplace.resetFilters()" style="background: none; border: none; color: var(--color-primary); font-size: 0.9rem; font-weight: 500; cursor: pointer; text-decoration: underline;">
+            Reset filters
+          </button>
+        </div>
+      </div>
+
+      <!-- Marketplace Cards Grid -->
+      <div class="marketplace-grid" id="marketplace-grid">
+        <!-- Injected dynamically by js/marketplace.js -->
+      </div>
+
+      <!-- Agent-Controlled Safety Guarantee Section -->
+      <div style="margin-top: 4.5rem; background: #ffffff; border: 1px solid #e2e8f0; border-radius: var(--border-radius); padding: 2.5rem 2rem; box-shadow: var(--shadow-sm);">
+        <h3 style="font-size: 1.4rem; color: var(--color-dark); margin-bottom: 0.5rem; text-align: center;">How Agent-Controlled Student Trading Works</h3>
+        <p style="color: var(--color-gray); text-align: center; max-width: 650px; margin: 0 auto 2rem; font-size: 0.95rem;">
+          To prevent student fraud, unsolicited spam, and hostel security risks, all communications and inspections are mediated by verified UniNest agents.
+        </p>
+        
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.5rem;">
+          <div style="background: #f8fafc; padding: 1.5rem; border-radius: var(--border-radius-sm); border-left: 4px solid var(--color-primary);">
+            <h4 style="color: var(--color-dark); margin-bottom: 0.5rem; font-size: 1.05rem;">🔒 Complete Contact Privacy</h4>
+            <p style="color: var(--color-gray); font-size: 0.88rem; line-height: 1.5;">Neither party's phone number, email address, or private hostel room number is ever displayed publicly or shared with prospective buyers.</p>
+          </div>
+          <div style="background: #f8fafc; padding: 1.5rem; border-radius: var(--border-radius-sm); border-left: 4px solid #10b981;">
+            <h4 style="color: var(--color-dark); margin-bottom: 0.5rem; font-size: 1.05rem;">🤝 Accompanied Handover</h4>
+            <p style="color: var(--color-gray); font-size: 0.88rem; line-height: 1.5;">When you request an inspection, an authorized agent schedules and attends the appointment at secure campus hubs (e.g. Campus Gates or Security centers).</p>
+          </div>
+          <div style="background: #f8fafc; padding: 1.5rem; border-radius: var(--border-radius-sm); border-left: 4px solid #f59e0b;">
+            <h4 style="color: var(--color-dark); margin-bottom: 0.5rem; font-size: 1.05rem;">📋 Track Deal Updates</h4>
+            <p style="color: var(--color-gray); font-size: 0.88rem; line-height: 1.5;">Every inquiry receives a unique reference code (e.g. <code>UN-INQ-48210</code>). You receive real-time status updates directly from your agent without third-party harassment.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Banner CTA -->
+      <div class="marketplace-banner-cta">
+        <div style="max-width: 550px;">
+          <h3 style="font-size: 1.8rem; margin-bottom: 0.75rem; font-weight: 700;">Selling Dorm Items Before Graduation?</h3>
+          <p style="color: #cbd5e1; font-size: 1rem; line-height: 1.6;">Your contact details are protected. Our campus agent vets buyers, arranges accompanied inspections, and oversees payment security.</p>
+        </div>
+        <button type="button" class="btn btn-primary" onclick="UniMarketplace.openPostModal()" style="background: #ffffff; color: #0f172a; padding: 0.9rem 1.8rem; font-weight: 700; border: none; box-shadow: var(--shadow-md);">
+          + Submit Item to Campus Agent
+        </button>
+      </div>
+    </div>
+  </main>
+
+  <!-- Quick View Modal (Zero private contacts displayed) -->
+  <div id="quick-view-modal" class="uni-modal-overlay">
+    <div class="uni-modal-dialog" style="max-width: 650px;">
+      <div class="uni-modal-header">
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <span id="qv-category" class="marketplace-category-tag">Category</span>
+          <span id="qv-condition" class="condition-badge condition-like-new">Condition</span>
+        </div>
+        <button type="button" class="uni-modal-close-btn" onclick="UniMarketplace.closeQuickView()" aria-label="Close modal">&times;</button>
+      </div>
+      <div class="uni-modal-body">
+        <div style="margin-bottom: 1.25rem; border-radius: 12px; overflow: hidden; background: #0f172a; max-height: 320px; display: flex; align-items: center; justify-content: center;">
+          <img id="qv-image" src="" alt="" style="width: 100%; height: 320px; object-fit: cover;">
+        </div>
+        
+        <h3 id="qv-title" style="font-size: 1.4rem; color: var(--color-dark); margin-bottom: 0.5rem; line-height: 1.3;"></h3>
+        
+        <div style="display: flex; align-items: baseline; gap: 0.75rem; margin-bottom: 1rem;">
+          <span id="qv-price" class="marketplace-price" style="font-size: 1.6rem;"></span>
+          <span id="qv-orig-price" class="marketplace-original-price" style="font-size: 1rem;"></span>
+        </div>
+
+        <div style="display: flex; flex-wrap: wrap; gap: 1rem; background: #f8fafc; padding: 0.85rem 1rem; border-radius: 8px; margin-bottom: 1.25rem; font-size: 0.88rem; color: var(--color-dark-muted);">
+          <div><strong>Campus:</strong> <span id="qv-campus"></span></div>
+          <div><strong>Handover Zone:</strong> <span id="qv-location"></span></div>
+          <div><strong>Managed By:</strong> <span id="qv-seller" style="color: #2563eb; font-weight: 600;"></span></div>
+          <div><strong>Posted:</strong> <span id="qv-posted"></span></div>
+        </div>
+
+        <div style="margin-bottom: 1.5rem;">
+          <h4 style="font-size: 0.95rem; margin-bottom: 0.4rem; color: var(--color-dark);">Verified Item Details:</h4>
+          <p id="qv-description" style="color: var(--color-gray); font-size: 0.92rem; line-height: 1.6; white-space: pre-line;"></p>
+        </div>
+
+        <div style="display: flex; gap: 0.75rem;">
+          <button id="qv-book-btn" type="button" class="btn btn-primary" style="flex: 1; padding: 0.85rem; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+            Book Agent-Accompanied Inspection
+          </button>
+          <button type="button" class="btn btn-secondary" onclick="UniMarketplace.closeQuickView()" style="padding: 0.85rem 1.25rem;">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Agent-Controlled Inquiry / Inspection Booking Modal -->
+  <div id="inquiry-modal" class="uni-modal-overlay">
+    <div class="uni-modal-dialog" style="max-width: 620px;">
+      <div class="uni-modal-header">
+        <div>
+          <h3 style="margin-bottom: 0.25rem;">Book Agent Inspection</h3>
+          <p style="font-size: 0.82rem; color: #64748b; margin: 0;">Inquiry routed to authorized campus agent. Zero direct buyer-seller exposure.</p>
+        </div>
+        <button type="button" class="uni-modal-close-btn" onclick="UniMarketplace.closeInquiryModal()" aria-label="Close modal">&times;</button>
+      </div>
+      <div class="uni-modal-body">
+        
+        <!-- Summary Card -->
+        <div style="background: #f1f5f9; padding: 0.85rem 1rem; border-radius: 8px; margin-bottom: 1.25rem; font-size: 0.88rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+          <div>
+            <strong id="inq-item-title" style="color: #0f172a; font-size: 0.95rem;"></strong><br>
+            <span style="color: #64748b;">Ref: <span id="inq-item-ref"></span> • <span id="inq-campus-hub"></span></span>
+          </div>
+          <div>
+            <span id="inq-item-price" class="marketplace-price" style="font-size: 1.25rem;"></span>
+          </div>
+        </div>
+
+        <form id="inquiry-form" onsubmit="UniMarketplace.handleInquirySubmit(event)">
+          <input type="hidden" id="inq-item-id" name="inq-item-id">
+
+          <div style="font-size: 0.82rem; color: #2563eb; background: #eff6ff; padding: 0.65rem 0.85rem; border-radius: 6px; margin-bottom: 1.25rem;">
+            🛡️ <strong>Assigned Agent:</strong> <span id="inq-assigned-agent" style="font-weight: 600;"></span> will review this request, liaise with the student owner, and accompany your physical inspection.
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label" for="inq-client-name">Your Full Name *</label>
+              <input type="text" id="inq-client-name" name="inq-client-name" class="form-input" placeholder="e.g. George Otieno" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="inq-client-phone">Your Phone Number (For Agent) *</label>
+              <input type="tel" id="inq-client-phone" name="inq-client-phone" class="form-input" placeholder="e.g. 0712 345 678" required>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="inq-client-email">Your Email Address (For Deal Updates) *</label>
+            <input type="email" id="inq-client-email" name="inq-client-email" class="form-input" placeholder="e.g. student@uonbi.ac.ke" required>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label" for="inq-date">Preferred Inspection Date *</label>
+              <input type="date" id="inq-date" name="inq-date" class="form-input" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="inq-time">Preferred Time Window *</label>
+              <select id="inq-time" name="inq-time" class="form-select" required>
+                <option value="Morning (9:00 AM - 12:00 PM)">Morning (9:00 AM - 12:00 PM)</option>
+                <option value="Afternoon (1:00 PM - 4:00 PM)" selected>Afternoon (1:00 PM - 4:00 PM)</option>
+                <option value="Late Afternoon (4:00 PM - 6:00 PM)">Late Afternoon (4:00 PM - 6:00 PM)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="inq-hub">Designated Campus Handover Hub *</label>
+            <select id="inq-hub" name="inq-hub" class="form-select" required>
+              <option value="University Main Gate Security Booth">University Main Gate Security Booth</option>
+              <option value="Campus Library Foyer">Campus Library Foyer / Entrance</option>
+              <option value="Student Union / Cafeteria Common Area">Student Union / Cafeteria Common Area</option>
+              <option value="Hostel Admin Office Lounge">Hostel Admin Office Lounge</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="inq-notes">Notes / Testing Requirements</label>
+            <textarea id="inq-notes" name="inq-notes" rows="2" class="form-textarea" placeholder="e.g. Need to plug in fridge to check cooling; would like agent to verify receipt."></textarea>
+          </div>
+
+          <div style="display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: 1.5rem;">
+            <button type="button" class="btn btn-secondary" onclick="UniMarketplace.closeInquiryModal()">Cancel</button>
+            <button type="submit" class="btn btn-primary" style="padding: 0.75rem 1.75rem;">Submit Request to Agent</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Inquiry Confirmation Modal -->
+  <div id="confirmation-modal" class="uni-modal-overlay">
+    <div class="uni-modal-dialog" style="max-width: 550px;">
+      <div class="uni-modal-header" style="border-bottom: none; padding-bottom: 0;">
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <div style="background: #dcfce7; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #16a34a; font-weight: 700;">✓</div>
+          <div>
+            <h3 style="margin: 0; font-size: 1.25rem;">Inquiry Routed to Agent</h3>
+            <span style="font-size: 0.8rem; color: #64748b;">Ref: <strong id="conf-ref-code" style="color: #0f172a;"></strong></span>
+          </div>
+        </div>
+        <button type="button" class="uni-modal-close-btn" onclick="UniMarketplace.closeConfirmationModal()">&times;</button>
+      </div>
+      <div class="uni-modal-body">
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1.25rem; margin-bottom: 1.25rem; font-size: 0.88rem;">
+          <div style="margin-bottom: 0.5rem;"><strong>Item:</strong> <span id="conf-item-title"></span></div>
+          <div style="margin-bottom: 0.5rem;"><strong>Assigned Agent:</strong> <span id="conf-agent-name" style="color: #2563eb; font-weight: 600;"></span></div>
+          <div style="margin-bottom: 0.5rem;"><strong>Requested Slot:</strong> <span id="conf-date-time"></span></div>
+          <div><strong>Handover Hub:</strong> <span id="conf-hub"></span></div>
+        </div>
+
+        <p style="font-size: 0.88rem; color: #475569; line-height: 1.5; margin-bottom: 1.5rem;">
+          Your request is recorded securely. To protect both students from fraud and unsolicited contact, your assigned agent will coordinate with the student seller and notify you with confirmation.
+        </p>
+
+        <div style="display: flex; gap: 0.75rem;">
+          <button type="button" class="btn btn-secondary" onclick="UniMarketplace.closeConfirmationModal(); UniMarketplace.openStatusTrackerModal();" style="flex: 1;">
+            Check Status Tracker
+          </button>
+          <button type="button" class="btn btn-primary" onclick="UniMarketplace.closeConfirmationModal()" style="flex: 1;">
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status Tracker Modal -->
+  <div id="status-tracker-modal" class="uni-modal-overlay">
+    <div class="uni-modal-dialog" style="max-width: 580px;">
+      <div class="uni-modal-header">
+        <div>
+          <h3 style="margin-bottom: 0.25rem;">Inquiry Status Tracker</h3>
+          <p style="font-size: 0.82rem; color: #64748b; margin: 0;">Track appointment confirmation & deal updates without exposing private details.</p>
+        </div>
+        <button type="button" class="uni-modal-close-btn" onclick="UniMarketplace.closeStatusTrackerModal()">&times;</button>
+      </div>
+      <div class="uni-modal-body">
+        <form onsubmit="UniMarketplace.checkInquiryStatus(event)" style="display: flex; gap: 0.5rem; margin-bottom: 1.25rem;">
+          <input type="text" id="tracker-ref-input" class="form-input" placeholder="Enter Inquiry Code (e.g. UN-INQ-40812)" required style="text-transform: uppercase;">
+          <button type="submit" class="btn btn-primary" style="white-space: nowrap; padding: 0.75rem 1.25rem;">Lookup</button>
+        </form>
+
+        <div id="tracker-result-box" style="display: none;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Authorized Agent Portal Modal -->
+  <div id="agent-portal-modal" class="uni-modal-overlay">
+    <div class="uni-modal-dialog" style="max-width: 820px;">
+      <div class="uni-modal-header">
+        <div>
+          <div style="display: inline-flex; align-items: center; gap: 0.35rem; background: #e0f2fe; color: #0369a1; padding: 0.2rem 0.6rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 700; margin-bottom: 0.25rem;">
+            🔒 AUTHORIZED AGENT ACCESS ONLY
+          </div>
+          <h3 style="margin: 0;">Campus Agent Verification & Inquiry Hub</h3>
+        </div>
+        <button type="button" class="uni-modal-close-btn" onclick="UniMarketplace.closeAgentPortal()">&times;</button>
+      </div>
+      <div class="uni-modal-body">
+        <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 1.25rem;">
+          This dashboard allows authorized campus agents to review confidential owner records, physically inspect submitted items, approve listings to go live, and coordinate supervised buyer handovers.
+        </p>
+
+        <!-- Tab Navigation -->
+        <div style="display: flex; gap: 0.5rem; border-bottom: 2px solid #e2e8f0; margin-bottom: 1.5rem;">
+          <button type="button" id="agent-tab-vetting" class="agent-tab-btn active" onclick="UniMarketplace.switchAgentTab('vetting')" style="padding: 0.65rem 1.25rem; font-size: 0.88rem; font-weight: 700; border: none; cursor: pointer; border-radius: 8px 8px 0 0; display: inline-flex; align-items: center; gap: 0.5rem;">
+            📦 Items Awaiting Physical Verification
+            <span id="badge-vetting-count" style="background: #ef4444; color: #ffffff; padding: 0.15rem 0.55rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 700;">0</span>
+          </button>
+          <button type="button" id="agent-tab-inquiries" class="agent-tab-btn" onclick="UniMarketplace.switchAgentTab('inquiries')" style="padding: 0.65rem 1.25rem; font-size: 0.88rem; font-weight: 700; border: none; cursor: pointer; border-radius: 8px 8px 0 0; display: inline-flex; align-items: center; gap: 0.5rem;">
+            🤝 Buyer Inquiries & Handovers
+            <span id="badge-inquiries-count" style="background: #2563eb; color: #ffffff; padding: 0.15rem 0.55rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 700;">0</span>
+          </button>
+        </div>
+
+        <!-- Tab 1: Vetting Queue -->
+        <div id="agent-portal-submissions-list">
+          <!-- Injected via js/marketplace.js -->
+        </div>
+
+        <!-- Tab 2: Inquiries Queue -->
+        <div id="agent-portal-inquiries-list" style="display: none;">
+          <!-- Injected via js/marketplace.js -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Private Post Item Modal -->
+  <div id="post-item-modal" class="uni-modal-overlay">
+    <div class="uni-modal-dialog" style="max-width: 650px;">
+      <div class="uni-modal-header">
+        <div>
+          <h3 style="margin-bottom: 0.25rem;">Submit Second-Hand Listing</h3>
+          <p style="font-size: 0.82rem; color: #64748b; margin: 0;">Owner details are strictly confidential and visible only to authorized agents.</p>
+        </div>
+        <button type="button" class="uni-modal-close-btn" onclick="UniMarketplace.closePostModal()" aria-label="Close modal">&times;</button>
+      </div>
+      <div class="uni-modal-body">
+        
+        <form id="post-item-form" onsubmit="UniMarketplace.handlePostItemSubmit(event)">
+          
+          <!-- SECTION 1: PUBLIC INFORMATION -->
+          <div style="font-size: 0.85rem; font-weight: 700; text-transform: uppercase; color: #2563eb; letter-spacing: 0.5px; margin-bottom: 0.75rem;">
+            1. Public Listing Information (Visible to buyers)
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="item-title">Item Title *</label>
+            <input type="text" id="item-title" name="item-title" class="form-input" placeholder="e.g. Ramtons 90L Mini Fridge with Ice Box" required>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label" for="item-category">Category *</label>
+              <select id="item-category" name="item-category" class="form-select" required>
+                <option value="Appliances">Appliances (Fridge, Microwave, Kettle)</option>
+                <option value="Furniture">Furniture (Study Desk, Chair, Wardrobe)</option>
+                <option value="Academic">Academic & Tech (Calculator, Books, Tablet)</option>
+                <option value="Kitchen">Kitchen & Gas (6kg Cylinder, Utensils)</option>
+                <option value="Bedding">Bedding & Mattresses (4x6, Duvet)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="item-condition">Condition *</label>
+              <select id="item-condition" name="item-condition" class="form-select" required>
+                <option value="Like New">Like New (Mint, barely used)</option>
+                <option value="Gently Used" selected>Gently Used (Good care, clean)</option>
+                <option value="Good Condition">Good Condition (Functional, minor wear)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label" for="item-price">Your Price (Ksh) *</label>
+              <input type="number" id="item-price" name="item-price" class="form-input" placeholder="e.g. 8500" min="100" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="item-orig-price">Original / Retail Price (Optional)</label>
+              <input type="number" id="item-orig-price" name="item-orig-price" class="form-input" placeholder="e.g. 14000">
+            </div>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label" for="item-campus">Campus *</label>
+              <select id="item-campus" name="item-campus" class="form-select" required>
+                <option value="UoN">University of Nairobi (UoN)</option>
+                <option value="KU" selected>Kenyatta University (KU)</option>
+                <option value="JKUAT">JKUAT Main Campus</option>
+                <option value="Strathmore">Strathmore University</option>
+                <option value="USIU">USIU Africa</option>
+                <option value="Daystar">Daystar University</option>
+                <option value="MKU">Mount Kenya University (MKU)</option>
+                <option value="Moi">Moi University</option>
+                <option value="Egerton">Egerton University</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="item-location">Public Landmark Area *</label>
+              <input type="text" id="item-location" name="item-location" class="form-input" placeholder="e.g. Gate B / Kahawa Sukari Hub" required>
+              <small style="color: #64748b; font-size: 0.75rem;">Public landmark only. Do NOT enter private room # here.</small>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Item Photos (Upload Image or Image URL)</label>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 0.5rem;">
+              <div>
+                <label for="item-image-file" style="font-size: 0.8rem; font-weight: 600; color: #475569; display: block; margin-bottom: 0.25rem;">Upload Photo File</label>
+                <input type="file" id="item-image-file" name="item-image-file" class="form-input" accept="image/*" style="padding: 0.4rem; font-size: 0.85rem;" onchange="UniMarketplace.handleItemFilePreview(this)">
+              </div>
+              <div>
+                <label for="item-image" style="font-size: 0.8rem; font-weight: 600; color: #475569; display: block; margin-bottom: 0.25rem;">Or Image Web URL</label>
+                <input type="url" id="item-image" name="item-image" class="form-input" placeholder="https://example.com/photo.jpg" oninput="UniMarketplace.handleItemUrlPreview(this.value)">
+              </div>
+            </div>
+            <div id="item-preview-box" style="display: none; align-items: center; gap: 0.75rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.5rem; margin-top: 0.5rem;">
+              <img id="item-preview-img" src="" alt="Photo preview" style="width: 48px; height: 48px; object-fit: cover; border-radius: 4px; border: 1px solid #cbd5e1;">
+              <span id="item-preview-label" style="font-size: 0.8rem; color: #475569;">Image selected</span>
+            </div>
+            <small style="color: #64748b; font-size: 0.75rem;">Upload directly from your device, provide a web image URL, or leave blank to use the category default image.</small>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="item-desc">Item Description & Accessories *</label>
+            <textarea id="item-desc" name="item-desc" rows="2" class="form-textarea" placeholder="Describe working condition, included cables/accessories, and year of purchase." required></textarea>
+          </div>
+
+          <!-- SECTION 2: CONFIDENTIAL SELLER INFORMATION -->
+          <div style="background: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 8px; padding: 1.25rem; margin-top: 1.5rem; margin-bottom: 1.25rem;">
+            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+              <span style="font-size: 1.1rem;">🔒</span>
+              <strong style="color: #0f172a; font-size: 0.92rem;">Confidential Owner Details (Agent Vault Only)</strong>
+            </div>
+            <p style="font-size: 0.8rem; color: #64748b; margin-bottom: 1rem; line-height: 1.4;">
+              These details are never shown to buyers or ordinary visitors. Only your authorized UniNest campus agent can see this to coordinate vetting and handovers.
+            </p>
+
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label class="form-label" for="owner-name">Owner Legal Name *</label>
+                <input type="text" id="owner-name" name="owner-name" class="form-input" placeholder="e.g. Brian Ochieng" required>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="owner-phone">Owner Phone / M-Pesa *</label>
+                <input type="tel" id="owner-phone" name="owner-phone" class="form-input" placeholder="e.g. 0712 345 678" required>
+              </div>
+            </div>
+
+            <div class="form-grid-2">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" for="owner-email">Owner Email *</label>
+                <input type="email" id="owner-email" name="owner-email" class="form-input" placeholder="e.g. brian@students.ku.ac.ke" required>
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" for="owner-private-address">Hostel & Room # (Private) *</label>
+                <input type="text" id="owner-private-address" name="owner-private-address" class="form-input" placeholder="e.g. Nyayo 3 Hostel, Room B12" required>
+              </div>
+            </div>
+
+            <div class="form-group" style="margin-top: 1.25rem; margin-bottom: 0;">
+              <label class="form-label" for="verification-method">Physical Item Inspection Preference *</label>
+              <select id="verification-method" name="verification-method" class="form-select" required>
+                <option value="Hostel Visit" selected>🏠 Hostel Room Inspection (Agent visits your room — best for fridges, desks, cylinders)</option>
+                <option value="Campus Hub Drop-Off">📍 Campus Hub Drop-Off (Drop off at student center agent kiosk — best for books, electronics, kettles)</option>
+              </select>
+              <small style="color: #64748b; font-size: 0.76rem; display: block; margin-top: 0.35rem;">Your listing stays strictly private until an authorized agent physically verifies and tests it.</small>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 0.75rem; justify-content: flex-end;">
+            <button type="button" class="btn btn-secondary" onclick="UniMarketplace.closePostModal()">Cancel</button>
+            <button type="submit" class="btn btn-primary" style="padding: 0.75rem 1.5rem;">Submit Listing to Agent</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="uni-toast" class="uni-toast"></div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <a href="index.html" class="logo">
+            <img src="images/logo.jpg" alt="UniNest Logo" style="height: 2rem; width: auto; margin-right: 0.5rem;" />
+            UniNest
+          </a>
+          <p>Making student housing and campus living simple, safe, and stress-free across Kenya.</p>
+        </div>
+        <div>
+          <h4>Explore</h4>
+          <ul class="footer-links">
+            <li><a href="search.html">All Properties</a></li>
+            <li><a href="agents.html">Verified Agents</a></li>
+            <li><a href="marketplace.html">Student Marketplace</a></li>
+            <li><a href="marketplace.html#sell">Sell Dorm Items</a></li>
+            <li><a href="https://www.tiktok.com/@uninest" target="_blank" rel="noopener noreferrer">TikTok Video Tours <span class="footer-social-badge">Watch</span></a></li>
+            <li><a href="https://www.instagram.com/uninest" target="_blank" rel="noopener noreferrer">Instagram Reels <span class="footer-social-badge">View</span></a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>Services</h4>
+          <ul class="footer-links">
+            <li><a href="javascript:void(0)" onclick="UniMarketplace.openStatusTrackerModal()">Track Deal Status</a></li>
+            <li><a href="javascript:void(0)" onclick="UniMarketplace.openAgentPortal()">Agent Inquiries Portal</a></li>
+            <li><a href="index.html#faq">Safety Guidelines</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>Legal & Privacy</h4>
+          <ul class="footer-links">
+            <li><a href="#">Terms of Service</a></li>
+            <li><a href="#">Privacy Policy (Contact Shield)</a></li>
+            <li><a href="#">Agent Mediation Code</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <div class="footer-bottom-left">
+          &copy; 2026 UniNest&trade;
+        </div>
+        <div class="footer-bottom-center">
+          <a href="#" class="footer-legal-link">Terms of Service</a>
+          <a href="#" class="footer-legal-link">Privacy Policy</a>
+        </div>
+        <div class="footer-bottom-right footer-social-icons">
+          <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" class="footer-social-icon facebook" aria-label="Facebook">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+            </svg>
+          </a>
+          <a href="https://www.instagram.com/uninest" target="_blank" rel="noopener noreferrer" class="footer-social-icon instagram" aria-label="Instagram">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect width="20" height="20" x="2" y="2" rx="5" ry="5"></rect>
+              <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
+              <line x1="17.5" x2="17.51" y1="6.5" y2="6.5"></line>
+            </svg>
+          </a>
+          <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" class="footer-social-icon twitter" aria-label="Twitter">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M23 3a10.9 10.9 0 0 1-3.14 1.53 4.48 4.48 0 0 0-7.86 3v1A10.66 10.66 0 0 1 3 4s-4 9 5 13a11.64 11.64 0 0 1-7 2c9 5 20 0 20-11.5a4.5 4.5 0 0 0-.08-.83A7.72 7.72 0 0 0 23 3z"/>
+            </svg>
+          </a>
+          <a href="https://www.tiktok.com/@uninest" target="_blank" rel="noopener noreferrer" class="footer-social-icon tiktok" aria-label="TikTok">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.89 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1v-3.52a6.37 6.37 0 0 0-.79-.05A6.34 6.34 0 0 0 3 15.67 6.34 6.34 0 0 0 9.34 22a6.34 6.34 0 0 0 6.34-6.33V9.05c1.26.86 2.76 1.36 4.38 1.41V7.02c-.16 0-.32-.01-.47-.03v-.3z"/>
+            </svg>
+          </a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/data.js"></script>
+  <script src="js/supabaseClient.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/marketplace.js"></script>
+</body>
+</html>

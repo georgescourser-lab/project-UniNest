@@ -32,11 +32,23 @@ function initNavbar() {
   }
 }
 
-// Global Toggle Fav function
+// Global Toggle Fav function with Auth Gatekeeper
 window.toggleFav = function(event, el) {
-  event.preventDefault();
-  el.classList.toggle('active');
-}
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+  if (window.UniAuth) {
+    window.UniAuth.requireAuth(() => {
+      el.classList.toggle('active');
+      if (window.UniAuth.showToast) {
+        window.UniAuth.showToast(el.classList.contains('active') ? 'Saved to your favorites!' : 'Removed from favorites.', 'success');
+      }
+    }, { reason: 'Sign in or create an account to save properties to your favorites.' });
+  } else {
+    el.classList.toggle('active');
+  }
+};
 
 // Skeleton Generators
 function createPropertySkeleton() {
@@ -55,7 +67,7 @@ function createPropertyCard(property, isCarousel = false) {
   return `
     <a href="property.html?id=${property.id}" class="property-card animate-fade-in-up ${itemClass}">
       <div class="property-image">
-        <img src="${property.image}" alt="${property.title}">
+        <img src="${property.image}" alt="${property.title}" onerror="this.src='https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800&q=80'">
         <div class="property-badges">
           <span class="badge badge-primary">${property.type}</span>
         </div>
@@ -86,16 +98,17 @@ function createAgentSkeleton() {
 }
 
 function createAgentCard(agent) {
+  const imgSrc = agent.image ? agent.image.replace(/^\//, '') : 'images/agent-1.svg';
   return `
     <div class="agent-card animate-fade-in-up">
-      <img src="${agent.image}" alt="${agent.name}">
+      <img src="${imgSrc}" alt="${agent.name}" onerror="this.src='images/agent-1.svg'" style="object-fit: cover;">
       <h3>${agent.name}</h3>
       <div class="agent-stats">
-        <span>★ ${agent.rating} (${agent.reviews})</span>
-        <span>${agent.listingsCount} Listings</span>
+        <span>★ ${agent.rating || '5.0'} (${agent.reviews || 0})</span>
+        <span>${agent.listingsCount || 0} Listings</span>
       </div>
-      <a href="https://wa.me/${agent.whatsapp}" target="_blank" class="btn btn-primary" style="background-color: #25D366; width: 100%;">
-        WhatsApp
+      <a href="search.html" class="btn btn-primary" style="width: 100%;">
+        View Managed Listings
       </a>
     </div>
   `;
@@ -114,36 +127,109 @@ function initHomepage() {
       featuredContainer.innerHTML = featured.map(p => createPropertyCard(p, true)).join('');
     }, 800);
   }
+
+  // Hook up Hero Search Form
+  const searchForm = document.getElementById('home-search-form');
+  if (searchForm) {
+    searchForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const type = document.getElementById('search-type')?.value || '';
+      const location = document.getElementById('search-location')?.value || '';
+      const budget = document.getElementById('search-budget')?.value || '';
+
+      const params = new URLSearchParams();
+      if (type && type !== 'Any') params.set('type', type);
+      if (location) params.set('location', location);
+      if (budget) params.set('budget', budget);
+
+      const qs = params.toString();
+      window.location.href = qs ? `search.html?${qs}` : 'search.html';
+    });
+  }
 }
 
 // Search Page Logic
 function initSearchPage() {
   const resultsContainer = document.getElementById('search-results');
   const typeFilter = document.getElementById('filter-type');
+  const applyBtn = document.getElementById('apply-filters-btn') || document.querySelector('.filter-sidebar .btn-primary');
   
   const urlParams = new URLSearchParams(window.location.search);
   const initialType = urlParams.get('type');
+  const initialLocation = urlParams.get('location');
+  const initialBudget = urlParams.get('budget');
   
   if (initialType && initialType !== 'Any' && typeFilter) {
     typeFilter.value = initialType;
   }
   
   const renderResults = () => {
+    if (!resultsContainer) return;
     // Show skeletons
     resultsContainer.innerHTML = Array(6).fill(createPropertySkeleton().replace('carousel-item', '')).join('');
     
     setTimeout(() => {
-      let filtered = window.uniData.properties;
+      let filtered = (window.uniData && window.uniData.properties) ? [...window.uniData.properties] : [];
+
+      // Filter by Property Type
       if (typeFilter && typeFilter.value !== 'Any') {
-        filtered = filtered.filter(p => p.type === typeFilter.value);
+        filtered = filtered.filter(p => p.type.toLowerCase() === typeFilter.value.toLowerCase());
+      }
+
+      // Filter by Location / Campus (if set from search query)
+      if (initialLocation && initialLocation !== 'Other') {
+        filtered = filtered.filter(p => {
+          const loc = (p.location || '').toLowerCase();
+          const title = (p.title || '').toLowerCase();
+          const desc = (p.description || '').toLowerCase();
+          const q = initialLocation.toLowerCase();
+          return loc.includes(q) || title.includes(q) || desc.includes(q);
+        });
+      }
+
+      // Filter by Distance
+      const distanceRadio = document.querySelector('input[name="distance"]:checked');
+      if (distanceRadio) {
+        const text = distanceRadio.parentElement.textContent.trim();
+        if (text.includes('1 km')) {
+          filtered = filtered.filter(p => parseFloat(p.distance) <= 1.0);
+        } else if (text.includes('3 km')) {
+          filtered = filtered.filter(p => parseFloat(p.distance) <= 3.0);
+        }
+      }
+
+      // Filter by Amenities
+      const checkedBoxes = Array.from(document.querySelectorAll('.filter-sidebar input[type="checkbox"]:checked'));
+      if (checkedBoxes.length) {
+        filtered = filtered.filter(p => {
+          return checkedBoxes.every(cb => {
+            const label = cb.parentElement.textContent.trim();
+            if (label.includes('Wi-Fi')) return p.amenities?.some(a => a.toLowerCase().includes('wi-fi'));
+            if (label.includes('Security')) return p.amenities?.some(a => a.toLowerCase().includes('security'));
+            if (label.includes('Furnished')) return p.amenities?.some(a => a.toLowerCase().includes('furnished'));
+            return true;
+          });
+        });
+      }
+
+      // Filter by Budget (if set from search query)
+      if (initialBudget) {
+        filtered = filtered.filter(p => {
+          const rentNum = parseInt((p.rent || '').replace(/\D/g, '')) || 0;
+          if (initialBudget === '0-5000') return rentNum <= 5000;
+          if (initialBudget === '5000-10000') return rentNum >= 5000 && rentNum <= 10000;
+          if (initialBudget === '10000-15000') return rentNum >= 10000 && rentNum <= 15000;
+          if (initialBudget === '15000+') return rentNum >= 15000;
+          return true;
+        });
       }
       
       if (filtered.length === 0) {
-        resultsContainer.innerHTML = '<p class="text-muted">No properties found matching your criteria.</p>';
+        resultsContainer.innerHTML = '<p class="text-muted" style="grid-column: 1 / -1; text-align: center; padding: 3rem 1rem;">No properties found matching your criteria. Try adjusting your filters.</p>';
       } else {
         resultsContainer.innerHTML = filtered.map(p => createPropertyCard(p, false)).join('');
       }
-    }, 800);
+    }, 400);
   };
   
   renderResults();
@@ -151,55 +237,155 @@ function initSearchPage() {
   if (typeFilter) {
     typeFilter.addEventListener('change', renderResults);
   }
+  if (applyBtn) {
+    applyBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      renderResults();
+    });
+  }
+  document.querySelectorAll('.filter-sidebar input').forEach(input => {
+    input.addEventListener('change', renderResults);
+  });
 }
 
 // Property Page Logic
 function initPropertyPage() {
   const urlParams = new URLSearchParams(window.location.search);
   const propId = parseInt(urlParams.get('id')) || 1;
-  const property = window.uniData.properties.find(p => p.id === propId);
-  const agent = window.uniData.agents.find(a => a.id === property?.agentId);
+  const allProperties = (window.uniData && window.uniData.properties && window.uniData.properties.length) 
+    ? window.uniData.properties 
+    : (typeof properties !== 'undefined' ? properties : []);
+  let property = allProperties.find(p => p.id === propId) || allProperties[0];
+  
+  const allAgents = (window.uniData && window.uniData.agents && window.uniData.agents.length)
+    ? window.uniData.agents
+    : (typeof agents !== 'undefined' ? agents : []);
+  let agent = allAgents.find(a => a.id === property?.agentId) || allAgents[0];
   
   if (property) {
     document.title = `${property.title} | UniNest`;
     
     setTimeout(() => {
       // Remove skeleton classes and inject data
-      document.getElementById('prop-title').textContent = property.title;
-      document.getElementById('prop-title').classList.remove('skeleton', 'skeleton-title');
+      const titleEl = document.getElementById('prop-title');
+      if (titleEl) {
+        titleEl.textContent = property.title;
+        titleEl.classList.remove('skeleton', 'skeleton-title');
+      }
       
-      document.getElementById('prop-location').textContent = property.location;
-      document.getElementById('prop-location').classList.remove('skeleton', 'skeleton-text');
+      const locEl = document.getElementById('prop-location');
+      if (locEl) {
+        locEl.textContent = property.location;
+        locEl.classList.remove('skeleton', 'skeleton-text');
+      }
       
-      document.getElementById('prop-price').textContent = property.rent;
-      document.getElementById('prop-type-badge').textContent = property.type;
+      const priceEl = document.getElementById('prop-price');
+      if (priceEl) priceEl.textContent = property.rent;
+      
+      const badgeEl = document.getElementById('prop-type-badge');
+      if (badgeEl) {
+        badgeEl.textContent = property.type;
+        badgeEl.style.opacity = '1';
+      }
       
       const descEl = document.getElementById('prop-desc');
-      descEl.textContent = property.description;
-      descEl.classList.remove('skeleton');
-      descEl.style.height = 'auto';
+      if (descEl) {
+        descEl.textContent = property.description;
+        descEl.classList.remove('skeleton');
+        descEl.style.height = 'auto';
+      }
       
       // Images Carousel
-      const carouselHtml = property.images.map(img => `<img src="${img}" alt="Property view">`).join('');
-      document.getElementById('prop-carousel').innerHTML = carouselHtml;
-      document.getElementById('prop-carousel').classList.remove('skeleton');
+      const carouselEl = document.getElementById('prop-carousel');
+      if (carouselEl && property.images && property.images.length) {
+        const carouselHtml = property.images.map(img => `<img src="${img}" alt="Property view" onerror="this.src='https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800&q=80'">`).join('');
+        carouselEl.innerHTML = carouselHtml;
+        carouselEl.classList.remove('skeleton');
+      }
       
       // Amenities
-      const amenitiesHTML = property.amenities.map(a => `<div class="amenity">• ${a}</div>`).join('');
-      document.getElementById('prop-amenities').innerHTML = amenitiesHTML;
+      const amenitiesEl = document.getElementById('prop-amenities');
+      if (amenitiesEl && property.amenities) {
+        const amenitiesHTML = property.amenities.map(a => `<div class="amenity">• ${a}</div>`).join('');
+        amenitiesEl.innerHTML = amenitiesHTML;
+      }
       
       // Agent
       if (agent) {
-        document.getElementById('agent-img').src = agent.image;
-        document.getElementById('agent-img').style.display = 'block';
-        document.getElementById('agent-name').textContent = agent.name;
-        document.getElementById('agent-name').classList.remove('skeleton', 'skeleton-title');
-        
-        document.getElementById('agent-whatsapp').href = `https://wa.me/${agent.whatsapp}`;
+        const agentImg = document.getElementById('agent-img');
+        if (agentImg) {
+          agentImg.src = agent.image ? agent.image.replace(/^\//, '') : 'images/agent-1.svg';
+          agentImg.style.display = 'block';
+        }
+        const agentName = document.getElementById('agent-name');
+        if (agentName) {
+          agentName.textContent = agent.name;
+          agentName.classList.remove('skeleton', 'skeleton-title');
+        }
+        const agentRating = document.getElementById('agent-rating');
+        if (agentRating) {
+          agentRating.textContent = `★ ${agent.rating || '5.0'} (${agent.reviews || 0} Reviews)`;
+        }
       }
-    }, 800);
+    }, 250);
   }
 }
+
+// Global Property Viewing Modal Handlers with Auth Gatekeeper
+window.openPropertyViewingModal = function() {
+  if (window.UniAuth) {
+    window.UniAuth.requireAuth(() => {
+      const modal = document.getElementById('property-viewing-modal');
+      if (modal) {
+        const user = window.UniAuth.getUser();
+        if (user && user.email) {
+          const emailInput = document.getElementById('prop-viewing-email');
+          if (emailInput && !emailInput.value) emailInput.value = user.email;
+        }
+        modal.classList.add('open');
+        document.body.style.overflow = 'hidden';
+      }
+    }, { reason: 'Sign in to schedule an accompanied property viewing with an authorized campus agent.' });
+  } else {
+    const modal = document.getElementById('property-viewing-modal');
+    if (modal) {
+      modal.classList.add('open');
+      document.body.style.overflow = 'hidden';
+    }
+  }
+};
+
+window.closePropertyViewingModal = function() {
+  const modal = document.getElementById('property-viewing-modal');
+  if (modal) {
+    modal.classList.remove('open');
+    document.body.style.overflow = '';
+  }
+};
+
+window.handlePropertyViewingSubmit = function(event) {
+  event.preventDefault();
+  if (window.UniAuth && !window.UniAuth.isAuthenticated()) {
+    window.UniAuth.requireAuth(() => {
+      window.handlePropertyViewingSubmit(event);
+    }, { reason: 'Please log in to confirm and register your viewing appointment.' });
+    return;
+  }
+
+  const name = document.getElementById('prop-viewing-name')?.value;
+  const date = document.getElementById('prop-viewing-date')?.value;
+  const time = document.getElementById('prop-viewing-time')?.value;
+  const refCode = `UN-PROP-${Math.floor(10000 + Math.random() * 90000)}`;
+
+  window.closePropertyViewingModal();
+  if (event.target && event.target.reset) {
+    event.target.reset();
+  }
+  if (window.UniAuth && window.UniAuth.showToast) {
+    window.UniAuth.showToast(`Viewing request registered! Ref: ${refCode}`, 'success');
+  }
+  alert(`✓ Viewing Request Confirmed!\n\nReference: ${refCode}\nClient: ${name}\nRequested Slot: ${date} (${time})\n\nAn authorized UniNest agent has received your request and will contact you directly to accompany your viewing.`);
+};
 
 // Agents Page Logic
 function initAgentsPage() {

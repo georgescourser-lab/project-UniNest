@@ -1,14 +1,19 @@
 import Link from 'next/link';
 import { createClient } from '@/utils/supabase/server';
+import { getCurrentUser } from '@/app/actions/authActions';
+import { getFavorites } from '@/app/actions/favoriteActions';
 import FilterSidebar from '@/components/FilterSidebar';
+import FavoriteButton from '@/components/FavoriteButton';
+import { FALLBACK_PROPERTIES } from '@/data/fallbackProperties';
 
 export const dynamic = 'force-dynamic';
 
 export default async function SearchPage({ searchParams }: { searchParams: Promise<{ [key: string]: string | string[] | undefined }> }) {
+  const resolvedParams = (await searchParams) || {};
   const supabase = await createClient();
-
-  
-  const resolvedParams = await searchParams;
+  const user = await getCurrentUser();
+  const userFavorites = user ? await getFavorites() : [];
+  const favoriteIds = new Set(userFavorites.map((f: any) => f.property_id));
   
   let types = resolvedParams.type;
   if (types && typeof types === 'string') {
@@ -51,7 +56,14 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   query = query.order('id', { ascending: false });
 
   const { data: propertiesData } = await query;
-  const properties = propertiesData || [];
+  let properties = propertiesData || [];
+  if (properties.length === 0) {
+    properties = FALLBACK_PROPERTIES.filter(p => {
+      if (typesArray && typesArray.length > 0 && !typesArray.includes(p.type)) return false;
+      if (location && location.trim() !== '' && !p.location.toLowerCase().includes(location.toLowerCase())) return false;
+      return true;
+    });
+  }
 
   return (
     <div className="container" style={{ paddingTop: '120px' }}>
@@ -69,6 +81,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
                 <div className="property-badges">
                   <span className="badge badge-primary">{property.type}</span>
                 </div>
+                <FavoriteButton propertyId={property.id} userId={user?.id} initialIsFavorite={favoriteIds.has(property.id)} />
               </div>
               <div className="property-content">
                 <div className="property-price">{property.rent}<span>/month</span></div>

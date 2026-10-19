@@ -8,6 +8,27 @@ export default function PostPropertyPage() {
   const [state, formAction, pending] = useActionState(addProperty, null);
   const [agents, setAgents] = useState<any[]>([]);
 
+  const [previewFiles, setPreviewFiles] = useState<string[]>([]);
+  const [imageUrlInput, setImageUrlInput] = useState('');
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) {
+      setPreviewFiles([]);
+      return;
+    }
+    const urls: string[] = [];
+    for (let i = 0; i < Math.min(files.length, 6); i++) {
+      urls.push(URL.createObjectURL(files[i]));
+    }
+    setPreviewFiles(urls);
+  };
+
+  const parsedImageUrls = imageUrlInput
+    .split(/[\n,]+/)
+    .map(u => u.trim())
+    .filter(u => u.startsWith('http://') || u.startsWith('https://'));
+
   useEffect(() => {
     getAgents().then(setAgents).catch(console.error);
   }, []);
@@ -116,26 +137,85 @@ export default function PostPropertyPage() {
           </div>
 
           <div className="form-section">
-            <h2>Media</h2>
-            <p className="helper-text">Upload high-quality images and videos of your property (Max 50MB each).</p>
+            <h2>Media & Photos</h2>
+            <p className="helper-text">
+              Add photos of your property. You can <strong>upload image files</strong> directly, paste <strong>image URLs</strong>, or provide both!
+            </p>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+              <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '12px', padding: '1rem' }}>
+                <label className="form-field" style={{ marginBottom: 0 }}>
+                  <span style={{ fontWeight: 600, color: '#1e293b' }}>
+                    Upload Image Files
+                  </span>
+                  <input 
+                    type="file" 
+                    name="images" 
+                    accept="image/png, image/jpeg, image/webp" 
+                    multiple 
+                    onChange={handleFileChange}
+                    style={{ marginTop: '0.5rem' }}
+                  />
+                  <small style={{ color: '#64748b', fontSize: '0.8rem', marginTop: '0.35rem', display: 'block' }}>
+                    Upload photos directly from your device (Max 50MB each).
+                  </small>
+                </label>
+              </div>
+
+              <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '12px', padding: '1rem' }}>
+                <label className="form-field" style={{ marginBottom: 0 }}>
+                  <span style={{ fontWeight: 600, color: '#1e293b' }}>
+                    Image Web URL(s)
+                  </span>
+                  <textarea 
+                    name="image_urls" 
+                    placeholder="https://images.unsplash.com/...&#10;https://example.com/room.jpg" 
+                    rows={2}
+                    value={imageUrlInput}
+                    onChange={(e) => setImageUrlInput(e.target.value)}
+                    style={{ marginTop: '0.5rem', fontFamily: 'monospace', fontSize: '0.85rem' }}
+                  />
+                  <small style={{ color: '#64748b', fontSize: '0.8rem', marginTop: '0.35rem', display: 'block' }}>
+                    Paste online image URLs (separated by new lines or commas).
+                  </small>
+                </label>
+              </div>
+            </div>
+
+            {/* Photo Preview Strip */}
+            {(previewFiles.length > 0 || parsedImageUrls.length > 0) && (
+              <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '0.85rem', marginBottom: '1.25rem' }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '0.5rem' }}>
+                  Selected Photos Preview ({previewFiles.length} file{previewFiles.length !== 1 ? 's' : ''}, {parsedImageUrls.length} web URL{parsedImageUrls.length !== 1 ? 's' : ''}):
+                </span>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  {previewFiles.map((url, idx) => (
+                    <div key={`file-prev-${idx}`} style={{ position: 'relative', width: '70px', height: '70px', borderRadius: '8px', overflow: 'hidden', border: '1px solid #94a3b8' }}>
+                      <img src={url} alt="Uploaded file preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <span style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(0,0,0,0.65)', color: '#fff', fontSize: '0.62rem', textAlign: 'center', padding: '1px 0' }}>File</span>
+                    </div>
+                  ))}
+                  {parsedImageUrls.map((url, idx) => (
+                    <div key={`url-prev-${idx}`} style={{ position: 'relative', width: '70px', height: '70px', borderRadius: '8px', overflow: 'hidden', border: '1px solid #3b82f6' }}>
+                      <img src={url} alt="URL preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { const el = e.currentTarget.parentElement; if (el) el.style.display = 'none'; }} />
+                      <span style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(37,99,235,0.8)', color: '#fff', fontSize: '0.62rem', textAlign: 'center', padding: '1px 0' }}>URL</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <label className="form-field">
-              <span>Images <span className="required">*</span></span>
-              <input 
-                type="file" 
-                name="images" 
-                accept="image/png, image/jpeg, image/webp" 
-                multiple 
-                required
-              />
-            </label>
-            <label className="form-field">
-              <span>Videos (Optional)</span>
+              <span>Videos (Optional Walkthroughs)</span>
               <input 
                 type="file" 
                 name="videos" 
                 accept="video/mp4, video/webm, video/ogg" 
                 multiple 
               />
+              <small style={{ color: '#64748b', fontSize: '0.8rem', marginTop: '0.25rem', display: 'block' }}>
+                Upload short MP4/WEBM property video clips (Max 50MB each).
+              </small>
             </label>
           </div>
 
