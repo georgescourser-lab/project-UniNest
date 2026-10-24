@@ -174,18 +174,16 @@ input:focus, select:focus, textarea:focus {
   top: 0;
   left: 0;
   right: 0;
-  height: 74px;
-  background: rgba(255, 255, 255, 0.96);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  height: 64px;
+  background: #ffffff;
   z-index: 1000;
-  border-bottom: 1px solid #eff6ff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  border-bottom: 1px solid #f1f5f9;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.02);
   transition: all var(--transition-normal);
 }
 
 .navbar.scrolled {
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .nav-container {
@@ -193,20 +191,30 @@ input:focus, select:focus, textarea:focus {
   justify-content: space-between;
   align-items: center;
   height: 100%;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
   flex-wrap: nowrap;
-  gap: 1.5rem;
 }
 
 .logo {
-  font-size: 1.45rem;
-  font-weight: 700;
-  color: var(--color-dark);
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #0f172a;
   display: inline-flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.5rem;
   text-decoration: none;
   white-space: nowrap;
   flex-shrink: 0;
+  letter-spacing: -0.015em;
+}
+
+.logo img {
+  height: 22px;
+  width: auto;
+  border-radius: 4px;
+  display: block;
 }
 
 .logo i {
@@ -218,7 +226,7 @@ input:focus, select:focus, textarea:focus {
   align-items: center;
   justify-content: space-between;
   flex: 1;
-  margin-left: 2.75rem;
+  margin-left: 4.5rem;
   flex-wrap: nowrap;
   white-space: nowrap;
 }
@@ -233,7 +241,7 @@ input:focus, select:focus, textarea:focus {
 
 .nav-links a {
   font-weight: 500;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   color: #475569;
   text-decoration: none;
   transition: color var(--transition-fast);
@@ -242,13 +250,12 @@ input:focus, select:focus, textarea:focus {
 
 .nav-links a:hover, .nav-links a.active {
   color: #2563eb;
-  font-weight: 600;
 }
 
 .nav-actions {
   display: flex;
   align-items: center;
-  gap: 0.65rem;
+  gap: 0.6rem;
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -257,12 +264,13 @@ input:focus, select:focus, textarea:focus {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0.45rem 1.15rem;
+  height: 35px;
+  padding: 0 1.15rem;
   border-radius: 9999px;
-  border: 1px solid #bfdbfe;
+  border: 1px solid #e2e8f0;
   background-color: #ffffff;
   color: #2563eb;
-  font-size: 0.875rem;
+  font-size: 0.825rem;
   font-weight: 500;
   text-decoration: none;
   white-space: nowrap;
@@ -271,8 +279,8 @@ input:focus, select:focus, textarea:focus {
 }
 
 .btn-nav-outline:hover {
-  background-color: #eff6ff;
-  border-color: #3b82f6;
+  background-color: #f8fafc;
+  border-color: #cbd5e1;
   color: #1d4ed8;
 }
 
@@ -280,22 +288,50 @@ input:focus, select:focus, textarea:focus {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0.45rem 1.25rem;
+  height: 35px;
+  padding: 0 1.25rem;
   border-radius: 9999px;
-  border: 1px solid transparent;
+  border: 1px solid #2563eb;
   background-color: #2563eb;
   color: #ffffff !important;
-  font-size: 0.875rem;
+  font-size: 0.825rem;
   font-weight: 500;
   text-decoration: none;
   white-space: nowrap;
   cursor: pointer;
   transition: all var(--transition-fast);
-  box-shadow: 0 1px 2px rgba(37, 99, 235, 0.15);
+  box-shadow: 0 1px 2px rgba(37, 99, 235, 0.12);
 }
 
 .btn-nav-solid:hover {
   background-color: #1d4ed8;
+  border-color: #1d4ed8;
+}
+
+.user-nav-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: #f1f5f9;
+  padding: 0.3rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: #0f172a;
+  white-space: nowrap;
+}
+
+.user-avatar-initial {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Hero Section */

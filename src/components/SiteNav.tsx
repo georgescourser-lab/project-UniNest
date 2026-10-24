@@ -15,7 +15,7 @@ export default async function SiteNav() {
       <div className="container nav-container">
         <input id="site-nav-toggle" className="nav-toggle" type="checkbox" />
         <Link href="/" className="logo">
-          <img src="/images/logo.jpg" alt="UniNest Logo" style={{ height: '2rem', width: 'auto', borderRadius: '4px' }} />
+          <img src="/images/logo.jpg" alt="UniNest Logo" style={{ height: '24px', width: 'auto', borderRadius: '4px' }} />
           UniNest
         </Link>
         <label className="mobile-menu-btn" htmlFor="site-nav-toggle" aria-label="Toggle menu" aria-controls="site-navigation">
@@ -33,11 +33,12 @@ export default async function SiteNav() {
             <a href="/marketplace.html?portal=agent" className="btn-nav-outline">Agent Portal</a>
             {sessionUser ? (
               <>
-                <Link href="/favorites" className="btn-nav-outline">Favorites</Link>
-                <span className="nav-session-status">Hi, {sessionUser.email?.split('@')[0] ?? 'there'}</span>
+                <Link href="/profile" className="btn-nav-outline">
+                  {sessionUser.email?.split('@')[0] ?? 'Account'}
+                </Link>
                 <form action={logout} style={{ display: 'inline', margin: 0 }}>
-                  <button className="btn-nav-outline" type="submit">
-                    Logout
+                  <button className="btn-nav-solid" type="submit">
+                    Sign Out
                   </button>
                 </form>
               </>
