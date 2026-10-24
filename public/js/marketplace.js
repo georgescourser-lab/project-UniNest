@@ -848,24 +848,144 @@
   }
 
   // =========================================================================
-  // Authorized Agent Portal (Where the agent submits, verifies, and approves)
+  // Verified Campus Agents Known by the System
   // =========================================================================
+  const KNOWN_AGENTS = [
+    { id: 1, name: 'George Scourser', email: 'georgescourser@gmail.com', campus: 'KU', phone: '254742122668', isLead: true },
+    { id: 2, name: 'Odero Carilus', email: 'oderocarilus@gmail.com', campus: 'JKUAT', phone: '254116280954', isLead: true },
+    { id: 1, name: 'Sarah Jenkins', email: 'sarah@uninest.com', campus: 'KU', phone: '254711000111' },
+    { id: 2, name: 'David Kimani', email: 'david@uninest.com', campus: 'JKUAT', phone: '254722000222' },
+    { id: 3, name: 'Brian Omondi', email: 'brian@uninest.com', campus: 'UoN', phone: '254733000333' },
+    { id: 4, name: 'Aisha Mohamed', email: 'aisha@uninest.com', campus: 'Strathmore', phone: '254744000444' }
+  ];
 
-  let currentAgentTab = 'vetting'; // 'vetting' | 'inquiries'
+  let currentActiveAgent = null;
 
-  function openAgentPortal() {
-    if (window.UniAuth) {
-      const allowed = window.UniAuth.requireAuth(() => {
-        _doOpenAgentPortal();
-      }, { reason: 'Agent sign-in required to access the verification portal.' });
-      if (!allowed) return;
+  function getVerifiedAgent(user) {
+    if (!user || !user.email) return null;
+    const cleanEmail = user.email.trim().toLowerCase();
+
+    // 1. Direct match in KNOWN_AGENTS
+    const direct = KNOWN_AGENTS.find(a => a.email.toLowerCase() === cleanEmail);
+    if (direct) return direct;
+
+    // 2. Check dynamic agents if loaded via Supabase or window.uniData
+    if (window.uniData && Array.isArray(window.uniData.agents)) {
+      const match = window.uniData.agents.find(a => a.email && a.email.toLowerCase() === cleanEmail);
+      if (match) return match;
     }
-    _doOpenAgentPortal();
+
+    // 3. Fallback admin emails
+    if (cleanEmail === 'georgescourser@gmail.com') {
+      return { id: 1, name: 'George Scourser', email: cleanEmail, campus: 'KU / All Campuses', isLead: true };
+    }
+    if (cleanEmail === 'oderocarilus@gmail.com') {
+      return { id: 2, name: 'Odero Carilus', email: cleanEmail, campus: 'JKUAT / All Campuses', isLead: true };
+    }
+
+    return null;
   }
 
-  function _doOpenAgentPortal() {
+  function getCurrentVerifiedAgent() {
+    if (!window.UniAuth) return null;
+    const user = window.UniAuth.getStoredUser();
+    return getVerifiedAgent(user);
+  }
+
+  function isItemAssignedToAgent(item, agent) {
+    if (!item || !agent) return false;
+
+    // Check by agentId or assignedAgentId
+    if (item.agentId && (item.agentId === agent.id || item.agentId == agent.id)) return true;
+    if (item.assignedAgentId && (item.assignedAgentId === agent.id || item.assignedAgentId == agent.id)) return true;
+
+    // Check by agentName matching
+    if (item.agentName && agent.name) {
+      const cleanItemAgent = item.agentName.toLowerCase();
+      const cleanAgentName = agent.name.toLowerCase();
+      const firstName = cleanAgentName.split(' ')[0];
+      if (cleanItemAgent.includes(firstName)) return true;
+    }
+
+    // Lead agents (George & Odero) can manage their campus or fallback unassigned
+    if (agent.isLead && (!item.agentId && !item.assignedAgentId)) return true;
+
+    return false;
+  }
+
+  // =========================================================================
+  // Authorized Agent Portal (Restricted strictly to Verified Agents)
+  // =========================================================================
+
+  let currentAgentTab = 'vetting'; // 'vetting' | 'inquiries' | 'listings'
+
+  function openAgentPortal() {
+    if (!window.UniAuth) {
+      alert('Authentication initializing. Please try again.');
+      return;
+    }
+
+    const user = window.UniAuth.getStoredUser();
+    if (!user) {
+      // Must be logged in
+      window.UniAuth.requireAuth(() => {
+        openAgentPortal();
+      }, { reason: 'Agent sign-in required to access the verification portal.' });
+      return;
+    }
+
+    // User is logged in, verify if their email is known by the system as an agent
+    const agent = getVerifiedAgent(user);
+    if (!agent) {
+      showAgentAccessDeniedModal(user.email);
+      return;
+    }
+
+    currentActiveAgent = agent;
+    _doOpenAgentPortal(agent);
+  }
+
+  function showAgentAccessDeniedModal(userEmail) {
+    const modal = document.getElementById('agent-access-denied-modal');
+    const emailSpan = document.getElementById('denied-user-email');
+    if (emailSpan) emailSpan.textContent = userEmail || 'your email';
+    if (modal) {
+      modal.classList.add('open');
+      document.body.style.overflow = 'hidden';
+    } else {
+      alert(`Access Restricted: Only verified campus agents can access this portal.\nYour account (${userEmail}) is not registered as an authorized agent.\nPlease log in with your authorized agent email.`);
+    }
+  }
+
+  function closeAgentAccessDeniedModal() {
+    const modal = document.getElementById('agent-access-denied-modal');
+    if (modal) {
+      modal.classList.remove('open');
+      document.body.style.overflow = '';
+    }
+  }
+
+  function switchAgentAccount() {
+    closeAgentAccessDeniedModal();
+    if (window.UniAuth) {
+      window.UniAuth.signOut();
+      setTimeout(() => {
+        window.UniAuth.openAuthModal('signin');
+      }, 300);
+    }
+  }
+
+  function _doOpenAgentPortal(agent) {
     const modal = document.getElementById('agent-portal-modal');
     if (!modal) return;
+
+    currentActiveAgent = agent || getCurrentVerifiedAgent();
+
+    // Update portal title and badge with the verified agent identity
+    const badgeEl = document.getElementById('agent-portal-badge');
+    if (badgeEl && currentActiveAgent) {
+      badgeEl.innerHTML = `✓ Authenticated Agent: <strong>${currentActiveAgent.name}</strong> (${currentActiveAgent.email}) • Agent ID #${currentActiveAgent.id}`;
+    }
 
     switchAgentTab('vetting');
     modal.classList.add('open');
@@ -884,30 +1004,37 @@
     currentAgentTab = tab;
     const tabVetting = document.getElementById('agent-tab-vetting');
     const tabInquiries = document.getElementById('agent-tab-inquiries');
+    const tabListings = document.getElementById('agent-tab-listings');
+
     const containerVetting = document.getElementById('agent-portal-submissions-list');
     const containerInquiries = document.getElementById('agent-portal-inquiries-list');
+    const containerListings = document.getElementById('agent-portal-listings-list');
 
-    if (tabVetting && tabInquiries) {
-      tabVetting.classList.toggle('active', tab === 'vetting');
-      tabInquiries.classList.toggle('active', tab === 'inquiries');
-    }
+    if (tabVetting) tabVetting.classList.toggle('active', tab === 'vetting');
+    if (tabInquiries) tabInquiries.classList.toggle('active', tab === 'inquiries');
+    if (tabListings) tabListings.classList.toggle('active', tab === 'listings');
 
-    if (containerVetting && containerInquiries) {
-      containerVetting.style.display = (tab === 'vetting') ? 'block' : 'none';
-      containerInquiries.style.display = (tab === 'inquiries') ? 'block' : 'none';
-    }
+    if (containerVetting) containerVetting.style.display = (tab === 'vetting') ? 'block' : 'none';
+    if (containerInquiries) containerInquiries.style.display = (tab === 'inquiries') ? 'block' : 'none';
+    if (containerListings) containerListings.style.display = (tab === 'listings') ? 'block' : 'none';
+
+    const agent = currentActiveAgent || getCurrentVerifiedAgent();
 
     if (tab === 'vetting') {
-      renderAgentVettingQueue();
-    } else {
-      renderAgentInquiriesQueue();
+      renderAgentVettingQueue(agent);
+    } else if (tab === 'inquiries') {
+      renderAgentInquiriesQueue(agent);
+    } else if (tab === 'listings') {
+      renderAgentListingsQueue(agent);
     }
   }
 
   // Renders Tab 1: Submissions waiting for physical inspection & approval
-  function renderAgentVettingQueue() {
+  function renderAgentVettingQueue(agent) {
     const container = document.getElementById('agent-portal-submissions-list');
     if (!container) return;
+
+    if (!agent) agent = currentActiveAgent || getCurrentVerifiedAgent();
 
     let pending = [];
     try {
@@ -915,6 +1042,11 @@
       if (stored) pending = JSON.parse(stored);
     } catch (e) {
       console.error(e);
+    }
+
+    // Filter to items assigned to THIS agent (or unassigned for leads)
+    if (agent) {
+      pending = pending.filter(item => isItemAssignedToAgent(item, agent));
     }
 
     // Update count badge
@@ -1145,6 +1277,119 @@
     }
   }
 
+  // Renders Tab 3: Active listings assigned to this agent (with Agent Deletion Manager)
+  function renderAgentListingsQueue(agent) {
+    const container = document.getElementById('agent-portal-listings-list');
+    if (!container) return;
+
+    if (!agent) {
+      agent = currentActiveAgent || getCurrentVerifiedAgent();
+    }
+
+    if (!agent) {
+      container.innerHTML = `<p style="text-align: center; color: #dc2626; padding: 2rem;">Unauthorized. Please sign in as a verified agent.</p>`;
+      return;
+    }
+
+    const allPublic = getAllItems();
+    // Filter strictly to items assigned to THIS agent!
+    const agentItems = allPublic.filter(item => isItemAssignedToAgent(item, agent));
+
+    const badge = document.getElementById('badge-listings-count');
+    if (badge) badge.textContent = agentItems.length;
+
+    if (!agentItems.length) {
+      container.innerHTML = `
+        <div style="text-align: center; padding: 3rem 1rem; background: #ffffff; border-radius: 12px; border: 1px dashed #cbd5e1;">
+          <h4 style="color: #0f172a; margin-bottom: 0.25rem;">No Active Listings for Agent #${agent.id}</h4>
+          <p style="color: #64748b; font-size: 0.88rem;">You currently have no approved items live under your agent portal (${agent.name}).</p>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = `
+      <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 0.75rem 1rem; margin-bottom: 1.25rem; font-size: 0.85rem; color: #166534;">
+        🛡️ <strong>Agent Ownership Protection:</strong> You are viewing <strong>${agentItems.length} active listings</strong> assigned to your portal. Only you can delete or modify these items. Items assigned to other campus agents are strictly protected and cannot be deleted from your portal.
+      </div>
+      ${agentItems.map(item => `
+        <div style="background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 1.25rem; margin-bottom: 1rem; display: flex; gap: 1rem; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+          <div style="display: flex; gap: 1rem; align-items: center;">
+            <img src="${item.image}" alt="${item.title}" style="width: 72px; height: 72px; object-fit: cover; border-radius: 8px; border: 1px solid #cbd5e1;">
+            <div>
+              <div style="font-size: 0.75rem; font-weight: 700; color: #2563eb; text-transform: uppercase;">Ticket: ${item.listingRef || 'UN-MKT-' + item.id}</div>
+              <h4 style="font-size: 1rem; color: #0f172a; margin: 0.15rem 0;">${item.title}</h4>
+              <div style="font-weight: 700; color: #0f172a; font-size: 0.95rem;">${item.price} <span style="font-size: 0.8rem; color: #64748b; font-weight: normal;">• Campus: ${item.campus || 'General'}</span></div>
+              <div style="font-size: 0.78rem; color: #16a34a; font-weight: 600; margin-top: 0.2rem;">✓ Supervised by: ${agent.name}</div>
+            </div>
+          </div>
+          <div>
+            <button type="button" class="btn btn-secondary" onclick="UniMarketplace.deleteAgentItem(${item.id}, '${item.listingRef || ''}')" style="background: #fee2e2; border-color: #fca5a5; color: #dc2626; font-size: 0.85rem; padding: 0.5rem 1rem; font-weight: 600; border-radius: 9999px; cursor: pointer;">
+              🗑️ Delete Item
+            </button>
+          </div>
+        </div>
+      `).join('')}
+    `;
+  }
+
+  // AGENT ACTION: Delete item (Only the assigned agent can delete this item)
+  function deleteAgentItem(itemId, itemRef) {
+    const currentAgent = currentActiveAgent || getCurrentVerifiedAgent();
+    if (!currentAgent) {
+      alert('Unauthorized: Only verified agents can delete items.');
+      return;
+    }
+
+    const allItems = getAllItems();
+    const targetItem = allItems.find(i => i.id == itemId || (itemRef && i.listingRef === itemRef));
+
+    if (!targetItem) {
+      showToast('Item not found or already deleted.', 'error');
+      return;
+    }
+
+    // STRICT VALIDATION: "he/she can only delete item on his portal only not an item for another agent"
+    if (!isItemAssignedToAgent(targetItem, currentAgent)) {
+      alert(`⚠️ Unauthorized Action:\n\nYou can only delete items assigned to your own portal (${currentAgent.name} - Agent #${currentAgent.id}).\n\nThis item is assigned to ${targetItem.agentName || 'another agent'} and cannot be deleted by you.`);
+      return;
+    }
+
+    const confirmed = confirm(
+      `Are you sure you want to delete this listing from your portal?\n\n` +
+      `Item: "${targetItem.title}"\n` +
+      `Price: ${targetItem.price}\n` +
+      `Ticket: ${targetItem.listingRef || 'N/A'}\n\n` +
+      `This will permanently remove the item from the live student marketplace.`
+    );
+
+    if (!confirmed) return;
+
+    // 1. Remove from localStorage STORAGE_KEY_PUBLIC
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY_PUBLIC);
+      if (stored) {
+        let pubList = JSON.parse(stored);
+        pubList = pubList.filter(i => !(i.id == itemId || (itemRef && i.listingRef === itemRef)));
+        localStorage.setItem(STORAGE_KEY_PUBLIC, JSON.stringify(pubList));
+      }
+    } catch (e) {
+      console.error(e);
+    }
+
+    // 2. Also remove from local fallback array in memory if present
+    if (window.uniData && Array.isArray(window.uniData.marketplaceItems)) {
+      window.uniData.marketplaceItems = window.uniData.marketplaceItems.filter(i => !(i.id == itemId || (itemRef && i.listingRef === itemRef)));
+    }
+
+    // 3. Re-render portal and public catalog
+    renderAgentListingsQueue(currentAgent);
+    initMarketplacePage();
+    initHomepageMarketplace();
+
+    showToast(`✓ Listing "${targetItem.title}" deleted successfully from your portal.`);
+  }
+
   function promptDealUpdate(refCode) {
     const msg = prompt(`Enter deal update message for client (${refCode}) - Private seller contacts will remain hidden:`);
     if (!msg || !msg.trim()) return;
@@ -1194,6 +1439,7 @@
       closeConfirmationModal();
       closeStatusTrackerModal();
       closeAgentPortal();
+      closeAgentAccessDeniedModal();
     }
   });
 
@@ -1205,6 +1451,7 @@
       closeConfirmationModal();
       closeStatusTrackerModal();
       closeAgentPortal();
+      closeAgentAccessDeniedModal();
     }
   });
 
@@ -1230,7 +1477,11 @@
     checkInquiryStatus,
     openAgentPortal,
     closeAgentPortal,
+    closeAgentAccessDeniedModal,
+    switchAgentAccount,
     switchAgentTab,
+    renderAgentListingsQueue,
+    deleteAgentItem,
     approveAndPublishSubmission,
     scheduleInspectionVisit,
     rejectSubmission,

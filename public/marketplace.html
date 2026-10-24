@@ -379,23 +379,24 @@
 
   <!-- Authorized Agent Portal Modal -->
   <div id="agent-portal-modal" class="uni-modal-overlay">
-    <div class="uni-modal-dialog" style="max-width: 820px;">
+    <div class="uni-modal-dialog" style="max-width: 860px;">
       <div class="uni-modal-header">
         <div>
           <div style="display: inline-flex; align-items: center; gap: 0.35rem; background: #e0f2fe; color: #0369a1; padding: 0.2rem 0.6rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 700; margin-bottom: 0.25rem;">
             🔒 AUTHORIZED AGENT ACCESS ONLY
           </div>
-          <h3 style="margin: 0;">Campus Agent Verification & Inquiry Hub</h3>
+          <h3 id="agent-portal-title" style="margin: 0;">Campus Agent Verification & Management Hub</h3>
+          <div id="agent-portal-badge" style="font-size: 0.85rem; color: #16a34a; font-weight: 600; margin-top: 0.25rem;"></div>
         </div>
         <button type="button" class="uni-modal-close-btn" onclick="UniMarketplace.closeAgentPortal()">&times;</button>
       </div>
       <div class="uni-modal-body">
         <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 1.25rem;">
-          This dashboard allows authorized campus agents to review confidential owner records, physically inspect submitted items, approve listings to go live, and coordinate supervised buyer handovers.
+          This dashboard allows verified campus agents to inspect pending submissions, coordinate handovers, and manage listings assigned specifically to their portal.
         </p>
 
         <!-- Tab Navigation -->
-        <div style="display: flex; gap: 0.5rem; border-bottom: 2px solid #e2e8f0; margin-bottom: 1.5rem;">
+        <div style="display: flex; gap: 0.5rem; border-bottom: 2px solid #e2e8f0; margin-bottom: 1.5rem; flex-wrap: wrap;">
           <button type="button" id="agent-tab-vetting" class="agent-tab-btn active" onclick="UniMarketplace.switchAgentTab('vetting')" style="padding: 0.65rem 1.25rem; font-size: 0.88rem; font-weight: 700; border: none; cursor: pointer; border-radius: 8px 8px 0 0; display: inline-flex; align-items: center; gap: 0.5rem;">
             📦 Items Awaiting Physical Verification
             <span id="badge-vetting-count" style="background: #ef4444; color: #ffffff; padding: 0.15rem 0.55rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 700;">0</span>
@@ -403,6 +404,10 @@
           <button type="button" id="agent-tab-inquiries" class="agent-tab-btn" onclick="UniMarketplace.switchAgentTab('inquiries')" style="padding: 0.65rem 1.25rem; font-size: 0.88rem; font-weight: 700; border: none; cursor: pointer; border-radius: 8px 8px 0 0; display: inline-flex; align-items: center; gap: 0.5rem;">
             🤝 Buyer Inquiries & Handovers
             <span id="badge-inquiries-count" style="background: #2563eb; color: #ffffff; padding: 0.15rem 0.55rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 700;">0</span>
+          </button>
+          <button type="button" id="agent-tab-listings" class="agent-tab-btn" onclick="UniMarketplace.switchAgentTab('listings')" style="padding: 0.65rem 1.25rem; font-size: 0.88rem; font-weight: 700; border: none; cursor: pointer; border-radius: 8px 8px 0 0; display: inline-flex; align-items: center; gap: 0.5rem;">
+            📋 My Assigned Listings
+            <span id="badge-listings-count" style="background: #10b981; color: #ffffff; padding: 0.15rem 0.55rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 700;">0</span>
           </button>
         </div>
 
@@ -415,6 +420,39 @@
         <div id="agent-portal-inquiries-list" style="display: none;">
           <!-- Injected via js/marketplace.js -->
         </div>
+
+        <!-- Tab 3: My Assigned Listings (Live Catalog Deletion Manager) -->
+        <div id="agent-portal-listings-list" style="display: none;">
+          <!-- Injected via js/marketplace.js -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Agent Portal Access Denied Modal -->
+  <div id="agent-access-denied-modal" class="uni-modal-overlay">
+    <div class="uni-modal-dialog" style="max-width: 520px; text-align: center; padding: 2rem;">
+      <div style="width: 60px; height: 60px; border-radius: 50%; background: #fee2e2; color: #dc2626; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.25rem; font-size: 1.75rem;">
+        🔒
+      </div>
+      <h3 style="color: #0f172a; margin-bottom: 0.5rem; font-size: 1.35rem;">Agent Access Restricted</h3>
+      <p style="color: #64748b; font-size: 0.95rem; line-height: 1.5; margin-bottom: 1.25rem;">
+        The Agent Portal can only be accessed by <strong>verified UniNest campus agents</strong>.
+        The currently signed-in account (<span id="denied-user-email" style="font-weight: 600; color: #0f172a;"></span>) is not registered as an authorized agent.
+      </p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 0.85rem; font-size: 0.85rem; color: #475569; margin-bottom: 1.5rem; text-align: left;">
+        <strong>Authorized Agent Accounts Known by System:</strong><br>
+        • <strong>George Scourser</strong> (georgescourser@gmail.com)<br>
+        • <strong>Odero Carilus</strong> (oderocarilus@gmail.com)<br>
+        • <strong>Campus Agent Network</strong> (@uninest.com)
+      </div>
+      <div style="display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap;">
+        <button type="button" class="btn btn-secondary" onclick="UniMarketplace.closeAgentAccessDeniedModal()" style="padding: 0.55rem 1.25rem; font-size: 0.85rem;">
+          Continue as Student
+        </button>
+        <button type="button" class="btn btn-primary" onclick="UniMarketplace.switchAgentAccount()" style="padding: 0.55rem 1.25rem; font-size: 0.85rem;">
+          Log In as Verified Agent
+        </button>
       </div>
     </div>
   </div>
