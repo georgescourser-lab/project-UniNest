@@ -29,21 +29,22 @@ export default async function SiteNav() {
         <div id="site-navigation" className="nav-menu">
           <NavLinks isLoggedIn={!!sessionUser} isAdmin={isAdmin} />
           <div className="nav-actions">
-            <a href="/marketplace.html#sell" className="btn btn-secondary" style={{ fontSize: '0.85rem', padding: '0.45rem 0.85rem' }}>+ Sell Item</a>
-            <a href="/marketplace.html?portal=agent" className="btn btn-primary" style={{ fontSize: '0.85rem', padding: '0.45rem 0.85rem' }}>Agent Portal</a>
+            <a href="/marketplace.html#sell" className="btn-nav-outline">+ List Item</a>
+            <a href="/marketplace.html?portal=agent" className="btn-nav-outline">Agent Portal</a>
             {sessionUser ? (
               <>
+                <Link href="/favorites" className="btn-nav-outline">Favorites</Link>
                 <span className="nav-session-status">Hi, {sessionUser.email?.split('@')[0] ?? 'there'}</span>
-                <form action={logout}>
-                  <button className="btn btn-secondary" style={{ padding: '0.45rem 0.85rem', fontSize: '0.85rem' }} type="submit">
+                <form action={logout} style={{ display: 'inline', margin: 0 }}>
+                  <button className="btn-nav-outline" type="submit">
                     Logout
                   </button>
                 </form>
               </>
             ) : (
               <>
-                <Link href="/login" className="btn btn-secondary" style={{ padding: '0.45rem 0.85rem', fontSize: '0.85rem' }}>Login</Link>
-                <Link href="/signup" className="btn btn-primary" style={{ padding: '0.45rem 0.85rem', fontSize: '0.85rem' }}>Sign Up</Link>
+                <Link href="/login" className="btn-nav-outline">Log In</Link>
+                <Link href="/signup" className="btn-nav-solid">Sign Up</Link>
               </>
             )}
           </div>
