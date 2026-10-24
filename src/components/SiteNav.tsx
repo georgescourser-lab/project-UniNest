@@ -29,19 +29,21 @@ export default async function SiteNav() {
         <div id="site-navigation" className="nav-menu">
           <NavLinks isLoggedIn={!!sessionUser} isAdmin={isAdmin} />
           <div className="nav-actions">
+            <a href="/marketplace.html#sell" className="btn btn-secondary" style={{ fontSize: '0.85rem', padding: '0.45rem 0.85rem' }}>+ Sell Item</a>
+            <a href="/marketplace.html?portal=agent" className="btn btn-primary" style={{ fontSize: '0.85rem', padding: '0.45rem 0.85rem' }}>Agent Portal</a>
             {sessionUser ? (
               <>
                 <span className="nav-session-status">Hi, {sessionUser.email?.split('@')[0] ?? 'there'}</span>
                 <form action={logout}>
-                  <button className="btn btn-secondary" style={{ padding: '0.5rem 1rem' }} type="submit">
+                  <button className="btn btn-secondary" style={{ padding: '0.45rem 0.85rem', fontSize: '0.85rem' }} type="submit">
                     Logout
                   </button>
                 </form>
               </>
             ) : (
               <>
-                <Link href="/login" className="btn btn-secondary" style={{ padding: '0.5rem 1rem' }}>Login</Link>
-                <Link href="/signup" className="btn btn-primary" style={{ padding: '0.5rem 1rem' }}>Sign Up</Link>
+                <Link href="/login" className="btn btn-secondary" style={{ padding: '0.45rem 0.85rem', fontSize: '0.85rem' }}>Login</Link>
+                <Link href="/signup" className="btn btn-primary" style={{ padding: '0.45rem 0.85rem', fontSize: '0.85rem' }}>Sign Up</Link>
               </>
             )}
           </div>

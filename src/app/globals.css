@@ -1240,3 +1240,344 @@ input:focus, select:focus, textarea:focus {
   }
 }
 
+/* ==========================================================================
+   Second-Hand Marketplace Styles
+   ========================================================================== */
+.marketplace-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background-color: #fef3c7;
+  color: #b45309;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--border-radius-full);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.condition-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.25rem 0.65rem;
+  border-radius: var(--border-radius-full);
+  display: inline-block;
+}
+
+.condition-like-new {
+  background-color: #dcfce7;
+  color: #15803d;
+}
+
+.condition-gently-used {
+  background-color: #e0f2fe;
+  color: #0369a1;
+}
+
+.condition-good {
+  background-color: #fef9c3;
+  color: #854d0e;
+}
+
+.campus-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--color-gray);
+  background-color: #f1f5f9;
+  padding: 0.2rem 0.55rem;
+  border-radius: 6px;
+  font-weight: 500;
+}
+
+.marketplace-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.75rem;
+  margin-top: 2rem;
+}
+
+.marketplace-card {
+  background: var(--color-white);
+  border-radius: var(--border-radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid #f1f5f9;
+  transition: box-shadow var(--transition-normal), border-color var(--transition-normal);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.marketplace-card:hover {
+  box-shadow: var(--shadow-hover);
+  border-color: #cbd5e1;
+}
+
+.marketplace-img-wrap {
+  position: relative;
+  width: 100%;
+  height: 210px;
+  background-color: #f1f5f9;
+  overflow: hidden;
+}
+
+.marketplace-img-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.4s ease;
+}
+
+.marketplace-card:hover .marketplace-img-wrap img {
+  transform: scale(1.05);
+}
+
+.marketplace-badges-row {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  z-index: 2;
+}
+
+.marketplace-card-content {
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+}
+
+.marketplace-meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.marketplace-category-tag {
+  font-size: 0.78rem;
+  color: var(--color-primary);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.marketplace-card-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--color-dark);
+  margin-bottom: 0.5rem;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.marketplace-price-box {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.marketplace-price {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.marketplace-original-price {
+  font-size: 0.9rem;
+  color: #94a3b8;
+  text-decoration: line-through;
+}
+
+.marketplace-discount-tag {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #dc2626;
+  background: #fee2e2;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+}
+
+.marketplace-card-footer {
+  margin-top: auto;
+  padding-top: 1rem;
+  border-top: 1px solid #f1f5f9;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.marketplace-seller-info {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  color: var(--color-gray);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.marketplace-card-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.btn-marketplace-chat {
+  background-color: #25d366;
+  color: #ffffff;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-radius: var(--border-radius-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  transition: background-color var(--transition-fast);
+}
+
+.btn-marketplace-chat:hover {
+  background-color: #1eb956;
+}
+
+.btn-marketplace-quickview {
+  background-color: #f1f5f9;
+  color: var(--color-dark);
+  padding: 0.45rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  border-radius: var(--border-radius-sm);
+  cursor: pointer;
+  border: none;
+  transition: background-color var(--transition-fast);
+}
+
+.btn-marketplace-quickview:hover {
+  background-color: #e2e8f0;
+}
+
+.marketplace-category-pills {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+  scrollbar-width: none;
+}
+
+.marketplace-category-pills::-webkit-scrollbar {
+  display: none;
+}
+
+.marketplace-pill {
+  padding: 0.45rem 1rem;
+  background: #f1f5f9;
+  color: var(--color-dark-muted);
+  font-size: 0.88rem;
+  font-weight: 500;
+  border-radius: var(--border-radius-full);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--transition-fast);
+  border: 1px solid transparent;
+}
+
+.marketplace-pill:hover {
+  background: #e2e8f0;
+  color: var(--color-dark);
+}
+
+.marketplace-pill.active {
+  background: var(--color-primary);
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.3);
+}
+
+/* Modals */
+.uni-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.uni-modal-overlay.open {
+  display: flex;
+  opacity: 1;
+}
+
+.uni-modal-dialog {
+  background: #ffffff;
+  border-radius: 20px;
+  max-width: 600px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-hover);
+  position: relative;
+  transform: scale(0.98);
+  opacity: 0;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.uni-modal-overlay.open .uni-modal-dialog {
+  transform: scale(1);
+  opacity: 1;
+}
+
+.uni-modal-header {
+  padding: 1.5rem 1.75rem;
+  border-bottom: 1px solid #f1f5f9;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.uni-modal-header h3 {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--color-dark);
+}
+
+.uni-modal-close-btn {
+  background: #f1f5f9;
+  border: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  cursor: pointer;
+  color: var(--color-gray);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.uni-modal-close-btn:hover {
+  background: #e2e8f0;
+  color: var(--color-dark);
+}
+
+.uni-modal-body {
+  padding: 1.75rem;
+}
+
+
