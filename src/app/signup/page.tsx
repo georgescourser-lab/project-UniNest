@@ -1,5 +1,5 @@
 import { Suspense } from 'react';
-import SpotifySignup from '@/components/SpotifySignup';
+import AuthCard from '@/components/AuthCard';
 
 export const metadata = {
   title: 'Sign up - UniNest',
@@ -19,7 +19,7 @@ export default function SignupPage() {
       }}
     >
       <Suspense fallback={<div style={{ textAlign: 'center', color: '#64748b', padding: '2rem' }}>Loading...</div>}>
-        <SpotifySignup />
+        <AuthCard initialTab="signup" />
       </Suspense>
     </main>
   );

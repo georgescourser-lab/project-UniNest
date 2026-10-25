@@ -191,7 +191,7 @@
     showError(msg) {
       const errBox = document.getElementById('uni-auth-error-box');
       if (errBox) {
-        errBox.textContent = msg;
+        errBox.innerHTML = msg;
         errBox.style.display = 'block';
       } else {
         this.showToast(msg, 'error');
@@ -201,10 +201,31 @@
     showSuccess(msg) {
       const succBox = document.getElementById('uni-auth-success-box');
       if (succBox) {
-        succBox.textContent = msg;
+        succBox.innerHTML = msg;
         succBox.style.display = 'block';
       } else {
         this.showToast(msg, 'success');
+      }
+    },
+
+    async resendConfirmationEmail(email) {
+      if (!window.supabaseClient) return;
+      const targetEmail = (email || (document.getElementById('uni-auth-email')?.value || '')).trim().toLowerCase();
+      if (!targetEmail) {
+        this.showError('Please enter your student email address to resend confirmation.');
+        return;
+      }
+      try {
+        const callbackUrl = window.location.origin + '/auth/callback?next=' + encodeURIComponent(window.location.pathname + window.location.search);
+        const { error } = await window.supabaseClient.auth.resend({
+          type: 'signup',
+          email: targetEmail,
+          options: { emailRedirectTo: callbackUrl }
+        });
+        if (error) throw error;
+        this.showSuccess('✓ Verification link resent to ' + targetEmail + '. Check your inbox and spam folder.');
+      } catch (err) {
+        this.showError(err.message || 'Failed to resend confirmation email.');
       }
     },
 
@@ -295,18 +316,28 @@
             throw new Error('Password must be at least 6 characters.');
           }
 
+          const callbackUrl = window.location.origin + '/auth/callback?next=' + encodeURIComponent(window.location.pathname + window.location.search);
           const { data, error } = await window.supabaseClient.auth.signUp({
             email,
-            password
+            password,
+            options: {
+              emailRedirectTo: callbackUrl
+            }
           });
 
           if (error) throw error;
 
           if (data?.session?.user) {
             this._user = data.session.user;
-            this.onAuthSuccess('Account created and logged in!');
+            this.onAuthSuccess('Account created! A confirmation email was sent to ' + email + '.');
           } else {
-            this.showSuccess('✓ Account registered! You can now log in.');
+            this.showSuccess(`
+              <div style="font-weight: 700; margin-bottom: 0.25rem;">✉️ Security verification email sent!</div>
+              <div>We sent a confirmation link to <strong>${email}</strong>. Please check your inbox (and spam folder) and click the link to confirm your account.</div>
+              <div style="margin-top: 0.5rem;">
+                <a href="javascript:void(0)" onclick="UniAuth.resendConfirmationEmail('${email}')" style="color: #166534; font-weight: 600; text-decoration: underline;">Resend verification email</a>
+              </div>
+            `);
             this.switchTab('signin');
             if (passInput) passInput.value = '';
           }
@@ -318,7 +349,19 @@
             password
           });
 
-          if (error) throw error;
+          if (error) {
+            if (error.message && (error.message.toLowerCase().includes('not confirmed') || error.message.toLowerCase().includes('unconfirmed'))) {
+              this.showError(`
+                <div>Your email <strong>${email}</strong> has not been confirmed yet.</div>
+                <div style="margin-top: 0.35rem;">
+                  Please check your inbox for the security confirmation email or 
+                  <a href="javascript:void(0)" onclick="UniAuth.resendConfirmationEmail('${email}')" style="color: #991b1b; font-weight: 700; text-decoration: underline;">click here to resend</a>.
+                </div>
+              `);
+              return;
+            }
+            throw error;
+          }
 
           this._user = data.user;
           this.onAuthSuccess(`Welcome back, ${email.split('@')[0]}!`);

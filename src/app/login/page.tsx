@@ -19,7 +19,7 @@ export default function LoginPage() {
       }}
     >
       <Suspense fallback={<div style={{ textAlign: 'center', color: '#64748b', padding: '2rem' }}>Loading...</div>}>
-        <AuthCard initialMode="email" />
+        <AuthCard initialTab="signin" />
       </Suspense>
     </main>
   );

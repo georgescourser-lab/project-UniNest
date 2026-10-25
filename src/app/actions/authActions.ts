@@ -163,7 +163,14 @@ export async function loginWithPassword(email: string, password: string) {
   })
 
   if (error) {
-    return { error: error.message }
+    const isUnconfirmed = error.message.toLowerCase().includes('not confirmed') || error.message.toLowerCase().includes('unconfirmed')
+    return { 
+      error: isUnconfirmed 
+        ? `Your email address has not been confirmed yet. Please check your inbox for the security confirmation link, or click below to resend.` 
+        : error.message,
+      isEmailUnconfirmed: isUnconfirmed,
+      email: cleanEmail
+    }
   }
 
   if (data?.user) {
@@ -223,25 +230,58 @@ export async function signupWithPassword(
         })
         return { success: true, hasSession: true, user: signInRes.data.user }
       }
+      return { 
+        error: 'An account with this email already exists. Please log in or check your inbox for confirmation.',
+        isExistingUser: true
+      }
     }
     return { error: error.message }
   }
 
-  // Account created in Supabase! Set unified session cookie immediately so user NEVER is asked to sign in again.
-  const userId = data.user?.id || `user_${Date.now()}`
-  const userName = metadata?.fullName || data.user?.user_metadata?.full_name || cleanEmail.split('@')[0]
+  // When email confirmation is required, Supabase returns data.user with data.session = null.
+  // In that case, we require the user to confirm via email before creating their session.
+  const needsConfirmation = !data.session
 
-  await setSessionCookie({
-    id: userId,
-    email: cleanEmail,
-    name: userName
-  })
+  if (!needsConfirmation && data?.user) {
+    const userId = data.user.id
+    const userName = metadata?.fullName || data.user.user_metadata?.full_name || cleanEmail.split('@')[0]
+    await setSessionCookie({
+      id: userId,
+      email: cleanEmail,
+      name: userName
+    })
+  }
 
   return { 
     success: true, 
-    hasSession: true,
+    needsConfirmation,
+    hasSession: !needsConfirmation,
+    email: cleanEmail,
+    message: needsConfirmation
+      ? `A security confirmation email has been sent to ${cleanEmail}. Please check your inbox and click the link to confirm your account.`
+      : `Account created successfully! Check your email for confirmation.`,
     user: data.user 
   }
+}
+
+export async function resendConfirmationEmailAction(email: string, origin: string, next: string = '/search') {
+  const cleanEmail = email.trim().toLowerCase()
+  const supabase = await createClient()
+  const redirectTo = `${origin}/auth/callback?next=${encodeURIComponent(next)}`
+
+  const { error } = await supabase.auth.resend({
+    type: 'signup',
+    email: cleanEmail,
+    options: {
+      emailRedirectTo: redirectTo,
+    },
+  })
+
+  if (error) {
+    return { error: error.message }
+  }
+
+  return { success: true, message: `Security confirmation email resent to ${cleanEmail}. Please check your inbox and spam folder.` }
 }
 
 export async function sendMagicLinkAction(email: string, origin: string, next: string) {
