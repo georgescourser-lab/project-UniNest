@@ -1552,12 +1552,36 @@ input:focus, select:focus, textarea:focus {
 
 /* Modern Auth System & Floating Toasts */
 .uni-auth-overlay {
+  position: fixed;
+  inset: 0;
   backdrop-filter: blur(8px);
   background: rgba(15, 23, 42, 0.7);
   z-index: 9999;
+  display: none;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+  padding: 1.5rem 1rem;
+}
+
+.uni-auth-overlay.open {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (max-height: 650px) {
+  .uni-auth-overlay.open {
+    align-items: flex-start;
+  }
 }
 
 .uni-auth-dialog {
+  margin: auto !important;
+  max-height: calc(100vh - 2rem);
+  width: 100%;
+  max-width: 430px;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
   animation: uniModalPop 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
@@ -1584,14 +1608,27 @@ input:focus, select:focus, textarea:focus {
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
 }
 
-.uni-auth-method {
-  transition: all 0.2s ease;
+.uni-auth-tab:hover:not(.active) {
+  color: #0f172a;
 }
 
-.uni-auth-method.active {
+#uni-auth-google-btn:hover {
+  background: #f8fafc !important;
+  border-color: #cbd5e1 !important;
+}
+
+#uni-auth-submit-btn:hover {
+  background: #1d4ed8 !important;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35) !important;
+}
+
+#uni-auth-submit-btn:active {
+  transform: scale(0.99);
+}
+
+.uni-auth-dialog input:focus {
   border-color: #2563eb !important;
-  background: #eff6ff !important;
-  color: #1d4ed8 !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15) !important;
 }
 
 /* Floating Toast Notifications */

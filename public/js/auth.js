@@ -132,8 +132,9 @@
       const modal = document.getElementById('uni-auth-modal');
       if (modal) {
         modal.classList.remove('open');
-        document.body.style.overflow = '';
       }
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
     },
 
     switchTab(tab) {
@@ -154,44 +155,23 @@
       if (tab === 'signin') {
         if (kicker) kicker.textContent = 'Welcome back';
         if (title) title.textContent = 'Log in to UniNest';
-        if (submitBtn) submitBtn.textContent = this._activeMethod === 'magic' ? 'Send Magic Sign-In Link' : 'Log In';
+        if (submitBtn) submitBtn.textContent = 'Log In';
         if (switchText) {
-          switchText.innerHTML = `Don't have an account? <a href="javascript:void(0)" onclick="UniAuth.switchTab('signup')">Sign up</a>`;
+          switchText.innerHTML = `Don't have an account? <a href="javascript:void(0)" onclick="UniAuth.switchTab('signup')" style="color: #2563eb; font-weight: 600; text-decoration: none;">Sign up</a>`;
         }
       } else {
         if (kicker) kicker.textContent = 'Get started';
         if (title) title.textContent = 'Create your account';
         if (submitBtn) submitBtn.textContent = 'Create Account';
         if (switchText) {
-          switchText.innerHTML = `Already have an account? <a href="javascript:void(0)" onclick="UniAuth.switchTab('signin')">Log in</a>`;
+          switchText.innerHTML = `Already have an account? <a href="javascript:void(0)" onclick="UniAuth.switchTab('signin')" style="color: #2563eb; font-weight: 600; text-decoration: none;">Log in</a>`;
         }
       }
       this.clearMessages();
     },
 
     switchMethod(method) {
-      this._activeMethod = method;
-      const passBtn = document.getElementById('uni-auth-method-pass');
-      const magicBtn = document.getElementById('uni-auth-method-magic');
-      const passGroup = document.getElementById('uni-auth-password-group');
-      const submitBtn = document.getElementById('uni-auth-submit-btn');
-
-      if (passBtn && magicBtn) {
-        passBtn.classList.toggle('active', method === 'password');
-        magicBtn.classList.toggle('active', method === 'magic');
-      }
-
-      if (passGroup) {
-        passGroup.style.display = (method === 'password') ? 'block' : 'none';
-      }
-
-      if (submitBtn) {
-        if (method === 'magic') {
-          submitBtn.textContent = 'Send Magic Sign-In Link ✨';
-        } else {
-          submitBtn.textContent = (this._activeTab === 'signup') ? 'Create Account' : 'Log In';
-        }
-      }
+      this._activeMethod = 'password';
       this.clearMessages();
     },
 
@@ -291,7 +271,7 @@
         return;
       }
 
-      if (this._activeMethod === 'password' && !password) {
+      if (!password) {
         this.showError('Please enter your password.');
         return;
       }
@@ -309,23 +289,7 @@
           throw new Error('Supabase client not initialized.');
         }
 
-        // Method 1: Magic Link (Passwordless)
-        if (this._activeMethod === 'magic') {
-          const { error } = await window.supabaseClient.auth.signInWithOtp({
-            email,
-            options: {
-              emailRedirectTo: window.location.href
-            }
-          });
-
-          if (error) throw error;
-
-          this.showSuccess(`✨ Magic link sent to ${email}! Check your inbox to sign in instantly.`);
-          if (submitBtn) submitBtn.disabled = false;
-          return;
-        }
-
-        // Method 2: Create Account (Sign Up)
+        // Method 1: Create Account (Sign Up)
         if (this._activeTab === 'signup') {
           if (password.length < 6) {
             throw new Error('Password must be at least 6 characters.');
@@ -347,7 +311,7 @@
             if (passInput) passInput.value = '';
           }
         } 
-        // Method 3: Sign In
+        // Method 2: Sign In
         else {
           const { data, error } = await window.supabaseClient.auth.signInWithPassword({
             email,
@@ -501,23 +465,23 @@
     modalDiv.id = 'uni-auth-modal';
     modalDiv.className = 'uni-modal-overlay uni-auth-overlay';
     modalDiv.innerHTML = `
-      <div class="uni-modal-dialog uni-auth-dialog" style="max-width: 440px; border-radius: 18px; padding: 0; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.2);">
+      <div class="uni-modal-dialog uni-auth-dialog" style="max-width: 430px; width: 100%; border-radius: 18px; padding: 0; box-shadow: 0 20px 40px rgba(0,0,0,0.2); background: #ffffff; margin: auto; max-height: calc(100vh - 2rem); display: flex; flex-direction: column; overflow-y: auto; -webkit-overflow-scrolling: touch;">
         
         <!-- Modal Header -->
-        <div style="padding: 1.5rem 1.75rem 1rem 1.75rem; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: flex-start;">
+        <div style="padding: 1.15rem 1.4rem 0.75rem 1.4rem; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: flex-start; flex-shrink: 0;">
           <div>
-            <div id="uni-auth-kicker" style="font-size: 0.78rem; font-weight: 700; color: #2563eb; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.25rem;">Welcome back</div>
-            <h3 id="uni-auth-title" style="margin: 0; font-size: 1.35rem; color: #0f172a; font-weight: 700;">Log in to UniNest</h3>
-            <p id="uni-auth-modal-reason" style="margin: 0.4rem 0 0 0; font-size: 0.84rem; color: #64748b; line-height: 1.45;"></p>
+            <div id="uni-auth-kicker" style="font-size: 0.72rem; font-weight: 700; color: #2563eb; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.2rem;">WELCOME BACK</div>
+            <h3 id="uni-auth-title" style="margin: 0; font-size: 1.25rem; color: #0f172a; font-weight: 700; letter-spacing: -0.01em;">Log in to UniNest</h3>
+            <p id="uni-auth-modal-reason" style="margin: 0.25rem 0 0 0; font-size: 0.8rem; color: #64748b; line-height: 1.35;">Sign in to save properties, book agent viewings, and list items.</p>
           </div>
-          <button type="button" class="uni-modal-close-btn" onclick="UniAuth.closeAuthModal()" style="margin-left: 1rem;">&times;</button>
+          <button type="button" class="uni-modal-close-btn" onclick="UniAuth.closeAuthModal()" style="margin-left: 1rem; flex-shrink: 0;" aria-label="Close modal">&times;</button>
         </div>
 
-        <div style="padding: 1.5rem 1.75rem;">
+        <div style="padding: 0.95rem 1.4rem 1.15rem 1.4rem; overflow-y: auto; flex: 1;">
           
           <!-- One-Click Google OAuth -->
-          <button type="button" id="uni-auth-google-btn" onclick="UniAuth.signInWithGoogle()" class="btn" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.75rem; background: #ffffff; border: 1.5px solid #e2e8f0; color: #0f172a; padding: 0.7rem 1rem; border-radius: 10px; font-weight: 600; font-size: 0.92rem; box-shadow: 0 1px 3px rgba(0,0,0,0.06); cursor: pointer; transition: all 0.2s ease; margin-bottom: 1.25rem;">
-            <svg width="20" height="20" viewBox="0 0 24 24">
+          <button type="button" id="uni-auth-google-btn" onclick="UniAuth.signInWithGoogle()" style="width: 100%; height: 38px; display: flex; align-items: center; justify-content: center; gap: 0.65rem; background: #ffffff; border: 1.5px solid #e2e8f0; color: #0f172a; padding: 0.45rem 1rem; border-radius: 8px; font-weight: 600; font-size: 0.88rem; box-shadow: 0 1px 3px rgba(0,0,0,0.04); cursor: pointer; transition: all 0.2s ease; margin-bottom: 0.75rem;">
+            <svg width="18" height="18" viewBox="0 0 24 24">
               <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
               <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
               <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
@@ -527,65 +491,55 @@
           </button>
 
           <!-- Divider -->
-          <div style="display: flex; align-items: center; margin: 0 0 1.25rem 0; color: #94a3b8; font-size: 0.78rem; font-weight: 600;">
+          <div style="display: flex; align-items: center; margin: 0 0 0.75rem 0; color: #94a3b8; font-size: 0.72rem; font-weight: 600;">
             <div style="flex: 1; height: 1px; background: #e2e8f0;"></div>
-            <span style="padding: 0 0.75rem; text-transform: uppercase; letter-spacing: 0.5px;">or with email</span>
+            <span style="padding: 0 0.65rem; text-transform: uppercase; letter-spacing: 0.5px;">or with email</span>
             <div style="flex: 1; height: 1px; background: #e2e8f0;"></div>
           </div>
 
           <!-- Tabs (Sign In vs Create Account) -->
-          <div style="display: flex; background: #f1f5f9; padding: 0.25rem; border-radius: 9px; margin-bottom: 1.25rem;">
-            <button type="button" id="uni-auth-tab-signin" onclick="UniAuth.switchTab('signin')" class="uni-auth-tab active" style="flex: 1; padding: 0.45rem; border: none; border-radius: 7px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">
+          <div style="display: flex; background: #f1f5f9; padding: 0.2rem; border-radius: 8px; margin-bottom: 0.75rem;">
+            <button type="button" id="uni-auth-tab-signin" onclick="UniAuth.switchTab('signin')" class="uni-auth-tab active" style="flex: 1; padding: 0.4rem; border: none; border-radius: 6px; font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">
               Log In
             </button>
-            <button type="button" id="uni-auth-tab-signup" onclick="UniAuth.switchTab('signup')" class="uni-auth-tab" style="flex: 1; padding: 0.45rem; border: none; border-radius: 7px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">
+            <button type="button" id="uni-auth-tab-signup" onclick="UniAuth.switchTab('signup')" class="uni-auth-tab" style="flex: 1; padding: 0.4rem; border: none; border-radius: 6px; font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">
               Create Account
             </button>
           </div>
 
-          <!-- Method Switcher (Password vs Magic Link) -->
-          <div style="display: flex; gap: 0.5rem; margin-bottom: 1.25rem;">
-            <button type="button" id="uni-auth-method-pass" onclick="UniAuth.switchMethod('password')" class="uni-auth-method active" style="flex: 1; padding: 0.4rem; font-size: 0.8rem; font-weight: 600; border: 1px solid #cbd5e1; border-radius: 6px; background: #ffffff; cursor: pointer;">
-              🔑 Password
-            </button>
-            <button type="button" id="uni-auth-method-magic" onclick="UniAuth.switchMethod('magic')" class="uni-auth-method" style="flex: 1; padding: 0.4rem; font-size: 0.8rem; font-weight: 600; border: 1px solid #cbd5e1; border-radius: 6px; background: #f8fafc; cursor: pointer;">
-              ✨ Magic Link
-            </button>
-          </div>
-
           <!-- Alert Messages -->
-          <div id="uni-auth-error-box" style="display: none; background: #fee2e2; border: 1px solid #fca5a5; color: #991b1b; padding: 0.75rem 1rem; border-radius: 8px; font-size: 0.85rem; margin-bottom: 1rem;"></div>
-          <div id="uni-auth-success-box" style="display: none; background: #dcfce7; border: 1px solid #86efac; color: #166534; padding: 0.75rem 1rem; border-radius: 8px; font-size: 0.85rem; margin-bottom: 1rem;"></div>
+          <div id="uni-auth-error-box" style="display: none; background: #fee2e2; border: 1px solid #fca5a5; color: #991b1b; padding: 0.6rem 0.85rem; border-radius: 8px; font-size: 0.82rem; margin-bottom: 0.75rem;"></div>
+          <div id="uni-auth-success-box" style="display: none; background: #dcfce7; border: 1px solid #86efac; color: #166534; padding: 0.6rem 0.85rem; border-radius: 8px; font-size: 0.82rem; margin-bottom: 0.75rem;"></div>
 
-          <!-- Auth Form -->
-          <form onsubmit="UniAuth.handleFormSubmit(event)" style="display: flex; flexDirection: column; gap: 0.85rem;">
-            <div class="form-group" style="margin-bottom: 0.85rem;">
-              <label class="form-label" style="font-size: 0.85rem; font-weight: 600; color: #1e293b; margin-bottom: 0.35rem; display: block;">Student Email</label>
-              <input type="email" id="uni-auth-email" class="form-input" placeholder="student@campus.ac.ke" required style="width: 100%; padding: 0.65rem 0.85rem; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.9rem;" />
+          <!-- Auth Form (Clean Vertical Flow) -->
+          <form onsubmit="UniAuth.handleFormSubmit(event)" style="display: flex; flex-direction: column; gap: 0.7rem; width: 100%;">
+            <div class="form-group" style="margin: 0; width: 100%; display: flex; flex-direction: column;">
+              <label for="uni-auth-email" class="form-label" style="font-size: 0.82rem; font-weight: 600; color: #1e293b; margin-bottom: 0.25rem; display: block;">Student Email</label>
+              <input type="email" id="uni-auth-email" class="form-input" placeholder="student@campus.ac.ke" required style="width: 100%; box-sizing: border-box; padding: 0.62rem 0.85rem; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.9rem; background: #ffffff; color: #0f172a; outline: none; transition: border-color 0.2s, box-shadow 0.2s;" />
             </div>
 
-            <div id="uni-auth-password-group" class="form-group" style="margin-bottom: 0.85rem;">
-              <label class="form-label" style="font-size: 0.85rem; font-weight: 600; color: #1e293b; margin-bottom: 0.35rem; display: flex; justify-content: space-between;">
+            <div id="uni-auth-password-group" class="form-group" style="margin: 0; width: 100%; display: flex; flex-direction: column;">
+              <label for="uni-auth-password" class="form-label" style="font-size: 0.82rem; font-weight: 600; color: #1e293b; margin-bottom: 0.25rem; display: flex; justify-content: space-between; align-items: center;">
                 <span>Password</span>
-                <span style="font-size: 0.76rem; color: #64748b; font-weight: normal;">(Min 6 characters)</span>
+                <span style="font-size: 0.73rem; color: #64748b; font-weight: normal;">(Min 6 characters)</span>
               </label>
-              <div style="position: relative;">
-                <input type="password" id="uni-auth-password" class="form-input" placeholder="••••••••" style="width: 100%; padding: 0.65rem 2.5rem 0.65rem 0.85rem; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.9rem;" />
-                <button type="button" onclick="toggleAuthPasswordVisibility()" style="position: absolute; right: 0.65rem; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: #64748b; font-size: 0.9rem;">👁️</button>
+              <div style="position: relative; width: 100%;">
+                <input type="password" id="uni-auth-password" class="form-input" placeholder="••••••••" required style="width: 100%; box-sizing: border-box; padding: 0.62rem 2.5rem 0.62rem 0.85rem; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.9rem; background: #ffffff; color: #0f172a; outline: none; transition: border-color 0.2s, box-shadow 0.2s;" />
+                <button type="button" onclick="toggleAuthPasswordVisibility()" aria-label="Toggle password visibility" style="position: absolute; right: 0.65rem; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: #64748b; font-size: 0.95rem; padding: 0.25rem; display: flex; align-items: center; justify-content: center;">👁️</button>
               </div>
             </div>
 
-            <button type="submit" id="uni-auth-submit-btn" class="btn btn-primary" style="width: 100%; padding: 0.75rem; font-weight: 600; border-radius: 8px; font-size: 0.95rem; margin-top: 0.25rem;">
+            <button type="submit" id="uni-auth-submit-btn" class="btn btn-primary" style="width: 100%; height: 40px; padding: 0.55rem 1.25rem; font-weight: 600; border-radius: 8px; font-size: 0.9rem; margin-top: 0.25rem; background: #2563eb; color: #ffffff; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25); transition: all 0.2s ease;">
               Log In
             </button>
           </form>
 
-          <p id="uni-auth-switch-prompt" style="text-align: center; margin: 1.25rem 0 0 0; font-size: 0.85rem; color: #64748b;">
-            Don't have an account? <a href="javascript:void(0)" onclick="UniAuth.switchTab('signup')" style="color: #2563eb; font-weight: 600;">Sign up</a>
+          <p id="uni-auth-switch-prompt" style="text-align: center; margin: 0.85rem 0 0 0; font-size: 0.82rem; color: #64748b;">
+            Don't have an account? <a href="javascript:void(0)" onclick="UniAuth.switchTab('signup')" style="color: #2563eb; font-weight: 600; text-decoration: none;">Sign up</a>
           </p>
         </div>
 
-        <div style="background: #f8fafc; padding: 0.75rem 1.75rem; border-top: 1px solid #f1f5f9; text-align: center; font-size: 0.75rem; color: #94a3b8;">
+        <div style="background: #f8fafc; padding: 0.65rem 1.25rem; border-top: 1px solid #f1f5f9; text-align: center; font-size: 0.72rem; color: #94a3b8; flex-shrink: 0;">
           🔒 Secure authentication powered by Supabase. Your privacy is guaranteed.
         </div>
       </div>
@@ -596,6 +550,13 @@
     // Close on backdrop click
     modalDiv.addEventListener('click', (e) => {
       if (e.target === modalDiv) {
+        UniAuth.closeAuthModal();
+      }
+    });
+
+    // Close on Escape key
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
         UniAuth.closeAuthModal();
       }
     });
