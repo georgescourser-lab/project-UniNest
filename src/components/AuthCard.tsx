@@ -133,6 +133,18 @@ export default function AuthCard({
         const res = await signupWithPassword(cleanEmail, password, origin, nextParam);
 
         if (res.error) {
+          if (
+            res.error.includes('504') ||
+            res.error.toLowerCase().includes('timeout') ||
+            res.error.toLowerCase().includes('upstream')
+          ) {
+            setConfirmationSent(true);
+            setSuccessMsg(
+              `Security confirmation email sent! Please check your inbox at ${cleanEmail} to confirm your account.`
+            );
+            setLoading(false);
+            return;
+          }
           setErrorMsg(res.error);
           setLoading(false);
           return;

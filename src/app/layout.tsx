@@ -7,6 +7,14 @@ import { AuthProvider } from "@/context/AuthContext";
 export const metadata: Metadata = {
   title: "UniNest | Student House Hunting",
   description: "Find the perfect student accommodation near your campus. Browse bedsitters, apartments, and houses with UniNest.",
+  icons: {
+    icon: [
+      { url: '/favicon.ico' },
+      { url: '/images/icon.svg', type: 'image/svg+xml' },
+      { url: '/images/icon.png', type: 'image/png' }
+    ],
+    apple: '/images/icon.png',
+  },
 };
 
 export default function RootLayout({
