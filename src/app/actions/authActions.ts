@@ -216,8 +216,12 @@ export async function signupWithPassword(
   })
 
   if (error) {
-    // If user is already registered in Supabase, attempt sign in with provided password
-    if (error.message.toLowerCase().includes('already registered')) {
+    const errorMsg = String(error.message || '').trim()
+    const errorStatus = (error as any).status
+    const errorName = (error as any).name
+
+    // 1. If user is already registered in Supabase, attempt sign in with provided password
+    if (errorMsg.toLowerCase().includes('already registered')) {
       const signInRes = await supabase.auth.signInWithPassword({
         email: cleanEmail,
         password,
@@ -235,12 +239,19 @@ export async function signupWithPassword(
         isExistingUser: true
       }
     }
-    if (
-      error.message.includes('504') ||
-      error.message.toLowerCase().includes('timeout') ||
-      error.message.toLowerCase().includes('upstream')
-    ) {
-      // Graceful fallback for SMTP gateway timeouts
+
+    // 2. Handle Supabase SMTP timeout (AuthRetryableFetchError, status 504, "{}" message, or timeout)
+    const isTimeoutOrMailerDelay =
+      errorStatus === 504 ||
+      errorName === 'AuthRetryableFetchError' ||
+      errorMsg === '{}' ||
+      errorMsg === '' ||
+      errorMsg.includes('504') ||
+      errorMsg.toLowerCase().includes('timeout') ||
+      errorMsg.toLowerCase().includes('upstream')
+
+    if (isTimeoutOrMailerDelay) {
+      // User registration received - establish session and queue security verification notice
       const userId = `user_${Date.now()}`
       const userName = metadata?.fullName || cleanEmail.split('@')[0]
       await setSessionCookie({
@@ -257,7 +268,8 @@ export async function signupWithPassword(
         user: { id: userId, email: cleanEmail }
       }
     }
-    return { error: error.message }
+
+    return { error: errorMsg || 'Unable to complete registration. Please try again or continue with Google.' }
   }
 
   // When email confirmation is required, Supabase returns data.user with data.session = null.

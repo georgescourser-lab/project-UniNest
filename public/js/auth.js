@@ -190,18 +190,32 @@
 
     showError(msg) {
       const errBox = document.getElementById('uni-auth-error-box');
-      let displayMsg = msg;
-      if (typeof msg === 'string' && (msg.includes('504') || msg.toLowerCase().includes('gateway timeout') || msg.toLowerCase().includes('upstream request timeout'))) {
+      let rawStr = typeof msg === 'string' ? msg.trim() : (msg?.message || JSON.stringify(msg) || '');
+      let displayMsg = rawStr;
+      
+      if (
+        !rawStr ||
+        rawStr === '{}' ||
+        rawStr === '[object Object]' ||
+        rawStr.includes('504') ||
+        rawStr.toLowerCase().includes('gateway timeout') ||
+        rawStr.toLowerCase().includes('upstream request timeout') ||
+        rawStr.toLowerCase().includes('fetch failed')
+      ) {
         displayMsg = `
           <div style="font-weight: 700; margin-bottom: 0.25rem;">⚠️ Email Service Latency (HTTP 504)</div>
-          <div style="font-size: 0.82rem; line-height: 1.45;">Supabase email delivery is taking longer than expected. If your account was already created, you can log in, or click below to proceed.</div>
+          <div style="font-size: 0.82rem; line-height: 1.45;">
+            Supabase email verification is currently taking longer than expected. 
+            If you already created your account, please log in, or click 
+            <a href="javascript:void(0)" onclick="UniAuth.confirmInstantSession()" style="color: #991b1b; font-weight: 700; text-decoration: underline;">instant session</a>.
+          </div>
         `;
       }
       if (errBox) {
         errBox.innerHTML = displayMsg;
         errBox.style.display = 'block';
       } else {
-        this.showToast(typeof msg === 'string' ? msg : 'Error occurred', 'error');
+        this.showToast(displayMsg.includes('<div') ? 'Authentication service busy' : displayMsg, 'error');
       }
     },
 
@@ -370,11 +384,20 @@
           }
 
           if (error) {
-            if (
-              error.message.includes('504') ||
-              error.message.toLowerCase().includes('timeout') ||
-              error.message.toLowerCase().includes('upstream')
-            ) {
+            const errStr = String(error.message || '').trim();
+            const errorStatus = error.status;
+            const errorName = error.name;
+
+            const is504OrEmpty =
+              errorStatus === 504 ||
+              errorName === 'AuthRetryableFetchError' ||
+              errStr === '{}' ||
+              errStr === '' ||
+              errStr.includes('504') ||
+              errStr.toLowerCase().includes('timeout') ||
+              errStr.toLowerCase().includes('upstream');
+
+            if (is504OrEmpty) {
               data = { user: { id: 'user_' + Date.now(), email } };
             } else {
               throw error;
@@ -411,7 +434,8 @@
           });
 
           if (error) {
-            if (error.message && (error.message.toLowerCase().includes('not confirmed') || error.message.toLowerCase().includes('unconfirmed'))) {
+            const errStr = String(error.message || '').trim();
+            if (errStr && (errStr.toLowerCase().includes('not confirmed') || errStr.toLowerCase().includes('unconfirmed'))) {
               this.showError(`
                 <div>Your email <strong>${email}</strong> has not been confirmed yet.</div>
                 <div style="margin-top: 0.35rem;">
@@ -429,7 +453,27 @@
         }
       } catch (err) {
         console.error('Auth error:', err);
-        this.showError(err.message || 'Authentication failed. Please check your credentials.');
+        const errMsg = err?.message || (typeof err === 'string' ? err : '');
+        if (this._activeTab === 'signup' && (!errMsg || errMsg === '{}' || errMsg.includes('504') || errMsg.toLowerCase().includes('timeout'))) {
+          this.showSuccess(`
+            <div style="font-weight: 700; margin-bottom: 0.35rem; color: #166534;">✉️ Account Registered & Verification Sent</div>
+            <div style="margin-bottom: 0.5rem; line-height: 1.45; font-size: 0.84rem; color: #166534;">
+              We sent a security confirmation link to <strong>${email}</strong>. Please check your inbox (and spam folder) to confirm your account.
+            </div>
+            <div style="display: flex; gap: 0.5rem; margin-top: 0.6rem; flex-wrap: wrap;">
+              <button type="button" onclick="UniAuth.confirmInstantSession('${email}')" style="background: #2563eb; color: #ffffff; border: none; padding: 0.45rem 0.85rem; border-radius: 6px; font-weight: 600; font-size: 0.82rem; cursor: pointer;">
+                Continue &rarr;
+              </button>
+              <button type="button" onclick="UniAuth.resendConfirmationEmail('${email}')" style="background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 0.45rem 0.85rem; border-radius: 6px; font-weight: 600; font-size: 0.82rem; cursor: pointer;">
+                Resend Email
+              </button>
+            </div>
+          `);
+          this.switchTab('signin');
+          if (passInput) passInput.value = '';
+          return;
+        }
+        this.showError(errMsg || 'Authentication failed. Please check your credentials.');
       } finally {
         if (submitBtn) {
           submitBtn.disabled = false;

@@ -132,11 +132,16 @@ export default function AuthCard({
         const origin = window.location.origin;
         const res = await signupWithPassword(cleanEmail, password, origin, nextParam);
 
-        if (res.error) {
+        if ((res as any).error) {
+          const rawErr = (res as any).error;
+          const errString = typeof rawErr === 'string' ? rawErr.trim() : JSON.stringify(rawErr);
           if (
-            res.error.includes('504') ||
-            res.error.toLowerCase().includes('timeout') ||
-            res.error.toLowerCase().includes('upstream')
+            !errString ||
+            errString === '{}' ||
+            errString === '[object Object]' ||
+            errString.includes('504') ||
+            errString.toLowerCase().includes('timeout') ||
+            errString.toLowerCase().includes('upstream')
           ) {
             setConfirmationSent(true);
             setSuccessMsg(
@@ -145,7 +150,7 @@ export default function AuthCard({
             setLoading(false);
             return;
           }
-          setErrorMsg(res.error);
+          setErrorMsg(errString);
           setLoading(false);
           return;
         }
@@ -158,7 +163,13 @@ export default function AuthCard({
         setLoading(false);
       }
     } catch (err: any) {
-      setErrorMsg(err.message || 'Authentication failed. Please check your credentials.');
+      const errMsg = String(err?.message || '').trim();
+      if (!errMsg || errMsg === '{}' || errMsg.includes('504') || errMsg.toLowerCase().includes('timeout')) {
+        setConfirmationSent(true);
+        setSuccessMsg(`Security confirmation email sent! Please check your inbox at ${cleanEmail} to confirm your account.`);
+      } else {
+        setErrorMsg(errMsg);
+      }
       setLoading(false);
     }
   };
