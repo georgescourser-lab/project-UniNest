@@ -5,10 +5,9 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   getGoogleOAuthUrl,
-  loginWithPassword,
-  signupWithPassword,
-  resendConfirmationEmailAction,
+  syncUserSession,
 } from '@/app/actions/authActions';
+import { createClient } from '@/utils/supabase/client';
 
 interface AuthCardProps {
   initialTab?: 'signin' | 'signup';
@@ -102,63 +101,124 @@ export default function AuthCard({
     setLoading(true);
 
     try {
-      if (activeTab === 'signin') {
-        // Log In
-        const res = await loginWithPassword(cleanEmail, password);
+      const supabase = createClient();
 
-        if (res.error) {
-          setErrorMsg(res.error);
-          if (res.isEmailUnconfirmed) {
+      if (activeTab === 'signin') {
+        // Password-based sign in
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password: password,
+        });
+
+        if (error) {
+          const errStr = (error.message || '').toLowerCase();
+          if (errStr.includes('not confirmed') || errStr.includes('unconfirmed')) {
+            setErrorMsg('Your email has not been confirmed yet. Please check your inbox for the confirmation link or click resend below.');
             setConfirmationSent(true);
+          } else {
+            setErrorMsg(error.message);
           }
           setLoading(false);
           return;
         }
 
-        // Cache client session
-        try {
-          const userObj = {
-            id: res.user?.id || `user_${Date.now()}`,
+        if (data?.user) {
+          const userPayload = {
+            id: data.user.id,
             email: cleanEmail,
-            name: res.user?.user_metadata?.full_name || cleanEmail.split('@')[0],
+            name: data.user.user_metadata?.full_name || cleanEmail.split('@')[0],
           };
-          localStorage.setItem('uninest_user', JSON.stringify(userObj));
-          document.cookie = `uninest_user_client=${encodeURIComponent(JSON.stringify(userObj))}; path=/; max-age=2592000; SameSite=Lax`;
-        } catch (e) {}
 
-        window.location.href = nextParam;
+          try {
+            localStorage.setItem('uninest_user', JSON.stringify(userPayload));
+            document.cookie = `uninest_user_client=${encodeURIComponent(JSON.stringify(userPayload))}; path=/; max-age=2592000; SameSite=Lax`;
+          } catch (e) {}
+
+          await syncUserSession(userPayload);
+          window.location.href = nextParam;
+          return;
+        }
       } else {
-        // Sign Up (Account creation with email confirmation security)
+        // Password-based sign up with implicit flow
         const origin = window.location.origin;
-        const res = await signupWithPassword(cleanEmail, password, origin, nextParam);
+        const callbackUrl = `${origin}/auth/callback?next=${encodeURIComponent(nextParam)}`;
 
-        if ((res as any).error) {
-          const rawErr = (res as any).error;
-          const errString = typeof rawErr === 'string' ? rawErr.trim() : JSON.stringify(rawErr);
-          if (
-            !errString ||
-            errString === '{}' ||
-            errString === '[object Object]' ||
-            errString.includes('504') ||
-            errString.toLowerCase().includes('timeout') ||
-            errString.toLowerCase().includes('upstream')
-          ) {
+        const { data, error } = await supabase.auth.signUp({
+          email: cleanEmail,
+          password: password,
+          options: {
+            emailRedirectTo: callbackUrl,
+            data: {
+              full_name: cleanEmail.split('@')[0],
+              display_name: cleanEmail.split('@')[0],
+            },
+          },
+        });
+
+        if (error) {
+          const rawErr = error.message || '';
+          const status = (error as any).status;
+          const isDelay = status === 504 || rawErr === '{}' || rawErr.includes('504') || rawErr.toLowerCase().includes('timeout');
+
+          if (isDelay) {
             setConfirmationSent(true);
-            setSuccessMsg(
-              `Security confirmation email sent! Please check your inbox at ${cleanEmail} to confirm your account.`
-            );
+            setSuccessMsg(`Confirmation email sent! Please check your inbox at ${cleanEmail} to confirm your account.`);
             setLoading(false);
             return;
           }
-          setErrorMsg(errString);
+
+          if (rawErr.toLowerCase().includes('already registered')) {
+            // If already registered, attempt login with entered password
+            const loginRes = await supabase.auth.signInWithPassword({
+              email: cleanEmail,
+              password: password,
+            });
+
+            if (!loginRes.error && loginRes.data.user) {
+              const userPayload = {
+                id: loginRes.data.user.id,
+                email: cleanEmail,
+                name: loginRes.data.user.user_metadata?.full_name || cleanEmail.split('@')[0],
+              };
+              try {
+                localStorage.setItem('uninest_user', JSON.stringify(userPayload));
+                document.cookie = `uninest_user_client=${encodeURIComponent(JSON.stringify(userPayload))}; path=/; max-age=2592000; SameSite=Lax`;
+              } catch (e) {}
+              await syncUserSession(userPayload);
+              window.location.href = nextParam;
+              return;
+            }
+
+            setErrorMsg('An account with this email already exists. Please log in or check your email for confirmation.');
+            setLoading(false);
+            return;
+          }
+
+          setErrorMsg(rawErr);
           setLoading(false);
           return;
         }
 
-        // Email confirmation security flow
+        // Implicit flow with immediate session (or confirmations disabled)
+        if (data?.session?.user) {
+          const userPayload = {
+            id: data.session.user.id,
+            email: cleanEmail,
+            name: data.session.user.user_metadata?.full_name || cleanEmail.split('@')[0],
+          };
+          try {
+            localStorage.setItem('uninest_user', JSON.stringify(userPayload));
+            document.cookie = `uninest_user_client=${encodeURIComponent(JSON.stringify(userPayload))}; path=/; max-age=2592000; SameSite=Lax`;
+          } catch (e) {}
+          await syncUserSession(userPayload);
+          window.location.href = nextParam;
+          return;
+        }
+
+        // Standard implicit flow: confirmation link emailed to user
         setConfirmationSent(true);
         setSuccessMsg(
-          `Security confirmation email sent! Please check your inbox at ${cleanEmail} to confirm your account before logging in.`
+          `Security confirmation link sent! Please check your inbox at ${cleanEmail} and click the link to confirm your account.`
         );
         setLoading(false);
       }
@@ -174,7 +234,7 @@ export default function AuthCard({
     }
   };
 
-  // 3. Resend Confirmation Email
+  // 3. Resend Confirmation Email (Implicit Flow)
   const handleResendConfirmation = async () => {
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail) {
@@ -184,10 +244,20 @@ export default function AuthCard({
     setResendingEmail(true);
     setResendStatus('');
     try {
+      const supabase = createClient();
       const origin = window.location.origin;
-      const res = await resendConfirmationEmailAction(cleanEmail, origin, nextParam);
-      if (res.error) {
-        setResendStatus(`Failed to resend: ${res.error}`);
+      const callbackUrl = `${origin}/auth/callback?next=${encodeURIComponent(nextParam)}`;
+
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: cleanEmail,
+        options: {
+          emailRedirectTo: callbackUrl,
+        },
+      });
+
+      if (error) {
+        setResendStatus(`Failed to resend: ${error.message}`);
       } else {
         setResendStatus(`✓ Verification link resent to ${cleanEmail}. Check your inbox and spam folder.`);
       }

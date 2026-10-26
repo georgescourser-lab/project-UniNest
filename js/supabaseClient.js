@@ -1,11 +1,19 @@
 const SUPABASE_URL = 'https://yuknsftjeoxifpjqumyk.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_rubzpKaVlt6MTnDIxEUjow_WaZ2n2Hw';
 
-// Initialize the Supabase client safely
+// Initialize the Supabase client safely with implicit flow support
 let supabaseClient = null;
 try {
     if (typeof supabase !== 'undefined' && supabase.createClient) {
-        supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+            auth: {
+                flowType: 'implicit',
+                detectSessionInUrl: true,
+                persistSession: true,
+                autoRefreshToken: true,
+                storage: typeof window !== 'undefined' ? window.localStorage : undefined
+            }
+        });
         window.supabaseClient = supabaseClient;
     }
 } catch (e) {

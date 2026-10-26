@@ -50,6 +50,16 @@ async function clearSessionCookie() {
   }
 }
 
+export async function syncUserSession(user: { id: string; email: string; name?: string }) {
+  await setSessionCookie(user)
+  return { success: true }
+}
+
+export async function clearUserSession() {
+  await clearSessionCookie()
+  return { success: true }
+}
+
 export async function getCurrentUser() {
   // 1. Try Supabase server client
   try {

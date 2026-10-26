@@ -728,7 +728,32 @@
       UniAuth._user = storedUser;
     }
 
-    // 2. Check existing Supabase session
+    // 2. Implicit Flow: Extract and verify URL fragment (#access_token=...&refresh_token=...)
+    if (window.location.hash && window.location.hash.includes('access_token')) {
+      try {
+        const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+        const accessToken = hashParams.get('access_token');
+        const refreshToken = hashParams.get('refresh_token');
+        if (accessToken && refreshToken && window.supabaseClient) {
+          const { data, error } = await window.supabaseClient.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken
+          });
+          if (!error && data?.user) {
+            UniAuth._user = data.user;
+            UniAuth.saveClientSession(data.user);
+            UniAuth.showToast('✓ Account confirmed! You are now logged in.', 'success');
+            if (window.history && window.history.replaceState) {
+              window.history.replaceState(null, '', window.location.pathname + window.location.search);
+            }
+          }
+        }
+      } catch (hashErr) {
+        console.warn('Implicit token extraction error:', hashErr);
+      }
+    }
+
+    // 3. Check existing Supabase session
     try {
       if (window.supabaseClient && window.supabaseClient.auth) {
         const { data } = await window.supabaseClient.auth.getSession();
@@ -737,7 +762,7 @@
           UniAuth.saveClientSession(UniAuth._user);
         }
 
-        // Listen for auth state changes (e.g. after Google OAuth redirect)
+        // Listen for auth state changes
         window.supabaseClient.auth.onAuthStateChange((event, session) => {
           if (session?.user) {
             UniAuth._user = session.user;

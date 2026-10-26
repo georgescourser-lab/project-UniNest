@@ -1,6 +1,6 @@
-import { createBrowserClient } from '@supabase/ssr'
+import { createClient as createSupabaseClient, SupabaseClient } from '@supabase/supabase-js'
 
-let browserClient: ReturnType<typeof createBrowserClient> | null = null
+let browserClient: SupabaseClient | null = null
 
 export function createClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -11,11 +11,26 @@ export function createClient() {
   }
 
   if (typeof window === 'undefined') {
-    return createBrowserClient(supabaseUrl, supabaseKey)
+    return createSupabaseClient(supabaseUrl, supabaseKey, {
+      auth: {
+        flowType: 'implicit',
+        detectSessionInUrl: false,
+        persistSession: false,
+        autoRefreshToken: false,
+      }
+    })
   }
 
   if (!browserClient) {
-    browserClient = createBrowserClient(supabaseUrl, supabaseKey)
+    browserClient = createSupabaseClient(supabaseUrl, supabaseKey, {
+      auth: {
+        flowType: 'implicit',
+        detectSessionInUrl: true,
+        persistSession: true,
+        autoRefreshToken: true,
+        storage: window.localStorage,
+      }
+    })
   }
 
   return browserClient
