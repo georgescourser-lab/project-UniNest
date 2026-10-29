@@ -55,6 +55,36 @@ export async function syncUserSession(user: { id: string; email: string; name?: 
   return { success: true }
 }
 
+export async function signInWithEmailOnly(email: string) {
+  const cleanEmail = (email || '').trim().toLowerCase()
+  if (!cleanEmail || !cleanEmail.includes('@')) {
+    return { error: 'Please enter a valid email address.' }
+  }
+
+  const name = cleanEmail.split('@')[0]
+  const id = 'user_' + cleanEmail.replace(/[^a-z0-9]/g, '_')
+  const userPayload = {
+    id,
+    email: cleanEmail,
+    name,
+  }
+
+  await setSessionCookie(userPayload)
+
+  return {
+    success: true,
+    user: {
+      id,
+      email: cleanEmail,
+      name,
+      user_metadata: {
+        full_name: name,
+        display_name: name,
+      },
+    },
+  }
+}
+
 export async function clearUserSession() {
   await clearSessionCookie()
   return { success: true }
@@ -336,6 +366,7 @@ export async function sendMagicLinkAction(email: string, origin: string, next: s
     email: email.trim().toLowerCase(),
     options: {
       emailRedirectTo: redirectTo,
+      shouldCreateUser: true,
     },
   })
 
@@ -344,6 +375,70 @@ export async function sendMagicLinkAction(email: string, origin: string, next: s
   }
 
   return { success: true }
+}
+
+export async function sendEmailOtpAction(userEmail: string) {
+  const cleanEmail = userEmail.trim().toLowerCase()
+  const supabase = await createClient()
+
+  // 1. Send the 6-digit OTP to any email (including custom @uni-nest.app email)
+  const { data, error } = await supabase.auth.signInWithOtp({
+    email: cleanEmail,
+    options: {
+      shouldCreateUser: true,
+    },
+  })
+
+  if (error) {
+    return { error: error.message }
+  }
+
+  return { success: true, data }
+}
+
+export async function verifyEmailOtpAction(
+  userEmail: string,
+  sixDigitCode: string,
+  otpType: 'email' | 'signup' = 'email'
+) {
+  const cleanEmail = userEmail.trim().toLowerCase()
+  const cleanToken = sixDigitCode.trim()
+  const supabase = await createClient()
+
+  // 2. Verify the 6-digit code when the user types it in
+  let { data: sessionData, error: verifyError } = await supabase.auth.verifyOtp({
+    email: cleanEmail,
+    token: cleanToken,
+    type: otpType,
+  })
+
+  // Fallback between 'email' and 'signup' in case OTP was triggered via the other method
+  if (verifyError) {
+    const fallbackType = otpType === 'email' ? 'signup' : 'email'
+    const fallbackRes = await supabase.auth.verifyOtp({
+      email: cleanEmail,
+      token: cleanToken,
+      type: fallbackType,
+    })
+    if (!fallbackRes.error && fallbackRes.data) {
+      sessionData = fallbackRes.data
+      verifyError = null
+    }
+  }
+
+  if (verifyError) {
+    return { error: verifyError.message }
+  }
+
+  if (sessionData?.user) {
+    await setSessionCookie({
+      id: sessionData.user.id,
+      email: sessionData.user.email || cleanEmail,
+      name: sessionData.user.user_metadata?.full_name || cleanEmail.split('@')[0],
+    })
+  }
+
+  return { success: true, session: sessionData?.session, user: sessionData?.user }
 }
 
 export async function getGoogleOAuthUrl(origin: string, next: string) {

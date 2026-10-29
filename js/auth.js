@@ -241,6 +241,90 @@
       this.onAuthSuccess(`Welcome to UniNest, ${cleanEmail.split('@')[0]}!`);
     },
 
+    async sendEmailOtp(email) {
+      if (!window.supabaseClient) return;
+      const userEmail = (email || (document.getElementById('uni-auth-email')?.value || '')).trim().toLowerCase();
+      if (!userEmail) {
+        this.showError('Please enter your email address first.');
+        return;
+      }
+      this.clearMessages();
+      try {
+        // 1. Send the 6-digit OTP to any email (including custom @uni-nest.app email)
+        const { data, error } = await window.supabaseClient.auth.signInWithOtp({
+          email: userEmail,
+          options: {
+            shouldCreateUser: true,
+          },
+        });
+        if (error) throw error;
+        this.renderOtpVerificationBox(userEmail, 'email');
+      } catch (err) {
+        this.showError(err.message || 'Failed to send 6-digit OTP code.');
+      }
+    },
+
+    async verifyEmailOtp(userEmail, otpType = 'email') {
+      if (!window.supabaseClient) return;
+      const codeInput = document.getElementById('uni-auth-otp-code');
+      const sixDigitCode = (codeInput?.value || '').trim();
+      if (!sixDigitCode || sixDigitCode.length < 6) {
+        this.showError('Please enter the 6-digit code from your email.');
+        return;
+      }
+      try {
+        // 2. Verify the 6-digit code when the user types it in
+        let { data: sessionData, error: verifyError } = await window.supabaseClient.auth.verifyOtp({
+          email: userEmail,
+          token: sixDigitCode,
+          type: otpType,
+        });
+
+        if (verifyError) {
+          const fallbackType = otpType === 'email' ? 'signup' : 'email';
+          const fallbackRes = await window.supabaseClient.auth.verifyOtp({
+            email: userEmail,
+            token: sixDigitCode,
+            type: fallbackType,
+          });
+          if (!fallbackRes.error && fallbackRes.data) {
+            sessionData = fallbackRes.data;
+            verifyError = null;
+          }
+        }
+
+        if (verifyError) throw verifyError;
+
+        const verifiedUser = sessionData?.user || sessionData?.session?.user;
+        if (verifiedUser) {
+          this._user = verifiedUser;
+          this.onAuthSuccess(`Welcome to UniNest, ${userEmail.split('@')[0]}!`);
+        }
+      } catch (err) {
+        this.showError(err.message || 'Invalid or expired 6-digit code.');
+      }
+    },
+
+    renderOtpVerificationBox(email, otpType = 'email') {
+      this.showSuccess(`
+        <div style="font-weight: 700; margin-bottom: 0.35rem; color: #166534;">🔐 Enter 6-Digit Verification Code</div>
+        <div style="margin-bottom: 0.6rem; line-height: 1.45; font-size: 0.84rem; color: #166534;">
+          We sent a 6-digit OTP code to <strong>${email}</strong>. Type it below to verify your account:
+        </div>
+        <div style="display: flex; gap: 0.5rem; margin-bottom: 0.6rem;">
+          <input type="text" id="uni-auth-otp-code" maxlength="6" inputmode="numeric" placeholder="123456" style="flex: 1; padding: 0.5rem 0.75rem; border: 1.5px solid #86efac; border-radius: 6px; font-size: 1.05rem; font-weight: 700; letter-spacing: 0.25em; text-align: center; background: #fff; color: #0f172a;" />
+          <button type="button" onclick="UniAuth.verifyEmailOtp('${email}', '${otpType}')" style="background: #16a34a; color: #ffffff; border: none; padding: 0.5rem 0.95rem; border-radius: 6px; font-weight: 700; font-size: 0.84rem; cursor: pointer;">
+            Verify
+          </button>
+        </div>
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+          <button type="button" onclick="UniAuth.sendEmailOtp('${email}')" style="background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 0.35rem 0.75rem; border-radius: 6px; font-weight: 600; font-size: 0.78rem; cursor: pointer;">
+            Resend 6-Digit Code
+          </button>
+        </div>
+      `);
+    },
+
     async resendConfirmationEmail(email) {
       if (!window.supabaseClient) return;
       const targetEmail = (email || (document.getElementById('uni-auth-email')?.value || '')).trim().toLowerCase();
@@ -679,6 +763,9 @@
 
             <button type="submit" id="uni-auth-submit-btn" class="btn btn-primary" style="width: 100%; height: 40px; padding: 0.55rem 1.25rem; font-weight: 600; border-radius: 8px; font-size: 0.9rem; margin-top: 0.25rem; background: #2563eb; color: #ffffff; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25); transition: all 0.2s ease;">
               Log In
+            </button>
+            <button type="button" onclick="UniAuth.sendEmailOtp()" style="width: 100%; height: 38px; padding: 0.45rem 1rem; font-weight: 600; border-radius: 8px; font-size: 0.84rem; background: #eff6ff; color: #1d4ed8; border: 1.5px solid #bfdbfe; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease;">
+              🔢 Send 6-Digit Email OTP Code
             </button>
           </form>
 

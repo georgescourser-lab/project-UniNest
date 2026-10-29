@@ -43,10 +43,7 @@ export default async function SiteNav() {
                 </form>
               </>
             ) : (
-              <>
-                <Link href="/login" className="btn-nav-outline">Log In</Link>
-                <Link href="/signup" className="btn-nav-solid">Sign Up</Link>
-              </>
+              <Link href="/login" className="btn-nav-solid">Sign In with Email</Link>
             )}
           </div>
         </div>

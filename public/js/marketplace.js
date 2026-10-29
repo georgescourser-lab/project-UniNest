@@ -883,7 +883,15 @@
       return { id: 2, name: 'Odero Carilus', email: cleanEmail, campus: 'JKUAT / All Campuses', isLead: true };
     }
 
-    return null;
+    // 4. Simplified Email-Only Sign-In: Allow any signed-in email to access the Agent Portal
+    const fallbackName = user.user_metadata?.full_name || user.name || cleanEmail.split('@')[0] || 'Campus Agent';
+    return {
+      id: 1,
+      name: fallbackName,
+      email: cleanEmail,
+      campus: 'All Campuses',
+      isLead: true
+    };
   }
 
   function getCurrentVerifiedAgent() {
@@ -894,6 +902,9 @@
 
   function isItemAssignedToAgent(item, agent) {
     if (!item || !agent) return false;
+
+    // Lead / Email-authenticated agents can manage all campus items
+    if (agent.isLead) return true;
 
     // Check by agentId or assignedAgentId
     if (item.agentId && (item.agentId === agent.id || item.agentId == agent.id)) return true;
@@ -906,9 +917,6 @@
       const firstName = cleanAgentName.split(' ')[0];
       if (cleanItemAgent.includes(firstName)) return true;
     }
-
-    // Lead agents (George & Odero) can manage their campus or fallback unassigned
-    if (agent.isLead && (!item.agentId && !item.assignedAgentId)) return true;
 
     return false;
   }
@@ -968,10 +976,12 @@
   function switchAgentAccount() {
     closeAgentAccessDeniedModal();
     if (window.UniAuth) {
-      window.UniAuth.signOut();
+      window.UniAuth.signOut(false);
       setTimeout(() => {
-        window.UniAuth.openAuthModal('signin');
-      }, 300);
+        window.UniAuth.requireAuth(() => {
+          openAgentPortal();
+        }, { reason: 'Enter your email address to access the Agent Portal.' });
+      }, 100);
     }
   }
 
