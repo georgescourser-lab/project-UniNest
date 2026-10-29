@@ -1,709 +1,571 @@
-"use client";
+'use client';
 
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   getGoogleOAuthUrl,
   syncUserSession,
 } from '@/app/actions/authActions';
-import { createClient } from '@/utils/supabase/client';
 
 interface AuthCardProps {
   initialTab?: 'signin' | 'signup';
-  initialMode?: 'email' | 'phone';
-  reason?: string;
-  onClose?: () => void;
 }
 
-export default function AuthCard({
-  initialTab = 'signin',
-  reason,
-  onClose,
-}: AuthCardProps) {
+export default function AuthCard({ initialTab = 'signin' }: AuthCardProps) {
   const searchParams = useSearchParams();
   const nextParam = searchParams.get('next') || '/search';
 
-  // Active Tab: 'signin' | 'signup'
-  const [activeTab, setActiveTab] = useState<'signin' | 'signup'>(initialTab);
+  const [tab, setTab] = useState<'signin' | 'signup'>(initialTab);
 
-  // Email Input (for 6-Digit OTP only — no passwords)
+  // Form states
+  const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
-  // 6-Digit OTP Verification State
-  const [sixDigitCode, setSixDigitCode] = useState('');
-  const [otpSent, setOtpSent] = useState(false);
-  const [verifyingOtp, setVerifyingOtp] = useState(false);
+  // Email Confirmation step states
+  const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
+  const [confirmationCode, setConfirmationCode] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
 
-  // Feedback & Loading
+  // Status states
   const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const err = new URLSearchParams(window.location.search).get('error');
-      if (err) return err;
-    }
-    return '';
-  });
-  const [successMsg, setSuccessMsg] = useState('');
-  const [resendingEmail, setResendingEmail] = useState(false);
-  const [resendStatus, setResendStatus] = useState('');
+  const [resending, setResending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // Complete session sync & redirect helper
-  const finalizeAuthenticatedSession = async (user: any, cleanEmail: string) => {
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setResendCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [resendCooldown]);
+
+  const resetMessages = () => {
+    setError(null);
+    setSuccessMsg(null);
+  };
+
+  const handleTabSwitch = (newTab: 'signin' | 'signup') => {
+    setTab(newTab);
+    setAwaitingConfirmation(false);
+    setConfirmationCode('');
+    resetMessages();
+  };
+
+  const persistClientSessionAndRedirect = async (userObj: {
+    id: string;
+    email: string;
+    name?: string;
+  }) => {
+    const cleanEmail = userObj.email.trim().toLowerCase();
+    const displayName = userObj.name || fullName.trim() || cleanEmail.split('@')[0];
     const userPayload = {
-      id: user.id,
-      email: (user.email || cleanEmail).toLowerCase(),
-      name: user.user_metadata?.full_name || cleanEmail.split('@')[0],
+      id: userObj.id,
+      email: cleanEmail,
+      name: displayName,
     };
 
     try {
       localStorage.setItem('uninest_user', JSON.stringify(userPayload));
-      document.cookie = `uninest_user_client=${encodeURIComponent(JSON.stringify(userPayload))}; path=/; max-age=2592000; SameSite=Lax`;
-    } catch (e) {}
+      document.cookie = `uninest_user_client=${encodeURIComponent(
+        JSON.stringify(userPayload)
+      )}; path=/; max-age=2592000; SameSite=Lax`;
+    } catch (err) {}
 
     await syncUserSession(userPayload);
-    window.location.href = nextParam;
+
+    setTimeout(() => {
+      window.location.href = nextParam;
+    }, 500);
   };
 
-  // 1. Google OAuth
   const handleGoogleSignIn = async () => {
+    resetMessages();
     setLoading(true);
-    setErrorMsg('');
     try {
       const origin = window.location.origin;
       const res = await getGoogleOAuthUrl(origin, nextParam);
-
       if (res.error) {
-        if (res.error.toLowerCase().includes('not enabled') || res.error.toLowerCase().includes('unsupported')) {
-          setErrorMsg('Google Sign-In is not enabled yet in Supabase. Please continue with your 6-Digit Email Verification Code below.');
-        } else {
-          setErrorMsg(res.error);
-        }
+        setError(res.error);
         setLoading(false);
-        return;
-      }
-
-      if (res.url) {
+      } else if (res.url) {
         window.location.href = res.url;
-      } else {
-        setLoading(false);
       }
     } catch (err: any) {
-      setErrorMsg(err.message || 'Google sign in failed.');
+      setError(err.message || 'Failed to initialize Google Sign-In');
       setLoading(false);
     }
   };
 
-  // 2. Send 6-Digit Email OTP via supabase.auth.signInWithOtp (with direct Resend fallback)
-  const handleSendOtp = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    setErrorMsg('');
-    setSuccessMsg('');
-    setResendStatus('');
+  const handleEmailPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    resetMessages();
 
-    const userEmail = email.trim().toLowerCase();
-    if (!userEmail) {
-      setErrorMsg('Please enter your email address.');
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      setError('Please enter a valid email address.');
+      return;
+    }
+
+    if (!password || password.length < 6) {
+      setError('Password must be at least 6 characters long.');
       return;
     }
 
     setLoading(true);
     try {
-      const supabase = createClient();
+      const origin = window.location.origin;
+      const action = tab === 'signup' ? 'signup' : 'signin';
 
-      // 1. Send the 6-digit OTP to any email (including custom @uni-nest.app email)
-      const { error } = await supabase.auth.signInWithOtp({
-        email: userEmail,
-        options: {
-          shouldCreateUser: true,
-        },
+      const res = await fetch('/api/auth/otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action,
+          email: cleanEmail,
+          password,
+          fullName: fullName.trim(),
+          origin,
+          next: nextParam,
+        }),
       });
 
-      if (error) {
-        // Fallback to direct Resend OTP delivery (/api/auth/otp) if Supabase SMTP is pending or rate-limited
-        const fallbackRes = await fetch('/api/auth/otp', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'send', email: userEmail }),
-        });
-        const fallbackData = await fallbackRes.json().catch(() => ({}));
+      const data = await res.json();
 
-        if (fallbackRes.ok && fallbackData?.success) {
-          setOtpSent(true);
-          setSuccessMsg(`We sent a 6-digit verification code to ${userEmail}. Enter it below to continue.`);
-          setLoading(false);
-          return;
+      if (data.needsConfirmation || data.isEmailUnconfirmed) {
+        setAwaitingConfirmation(true);
+        setConfirmationCode('');
+        setResendCooldown(30);
+        if (data.isEmailUnconfirmed && data.error) {
+          setError(data.error);
+        } else {
+          setSuccessMsg(
+            data.message ||
+              `Confirmation email sent to ${cleanEmail}! Enter the 6-digit verification code from your email (or click the confirmation link) to activate your account.`
+          );
         }
-
-        const rawErr = error.message || '';
-        const status = (error as any).status;
-        const isDelay =
-          status === 504 ||
-          rawErr === '{}' ||
-          rawErr.includes('504') ||
-          rawErr.toLowerCase().includes('timeout');
-
-        if (isDelay) {
-          setOtpSent(true);
-          setSuccessMsg(`6-digit verification code sent to ${userEmail}. Please check your inbox.`);
-          setLoading(false);
-          return;
-        }
-
-        setErrorMsg(fallbackData?.error || rawErr);
         setLoading(false);
         return;
       }
 
-      setOtpSent(true);
-      setSuccessMsg(`We sent a 6-digit verification code to ${userEmail}. Enter it below to continue.`);
-    } catch (err: any) {
-      const errMsg = String(err?.message || '').trim();
-      if (!errMsg || errMsg === '{}' || errMsg.includes('504') || errMsg.toLowerCase().includes('timeout')) {
-        setOtpSent(true);
-        setSuccessMsg(`6-digit verification code sent to ${userEmail}. Please check your inbox.`);
-      } else {
-        setErrorMsg(errMsg || 'Failed to send verification code.');
+      if (!res.ok || data.error) {
+        setError(data.error || 'Authentication failed. Please check your credentials.');
+        setLoading(false);
+        return;
       }
-    } finally {
+
+      if (data.success && data.user) {
+        setSuccessMsg('Signed in successfully! Redirecting...');
+        await persistClientSessionAndRedirect({
+          id: data.user.id,
+          email: data.user.email || cleanEmail,
+          name:
+            data.user.name ||
+            data.user.user_metadata?.full_name ||
+            cleanEmail.split('@')[0],
+        });
+      }
+    } catch (err: any) {
+      setError(err.message || 'Unable to process request. Please try again.');
       setLoading(false);
     }
   };
 
-  // 3. Verify 6-Digit Email OTP via supabase.auth.verifyOtp (with direct Resend fallback)
-  const handleVerifyOtp = async (e: React.FormEvent) => {
+  const handleVerifyConfirmationCode = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErrorMsg('');
-    setSuccessMsg('');
+    resetMessages();
 
-    const userEmail = email.trim().toLowerCase();
-    const cleanCode = sixDigitCode.trim();
-
-    if (!userEmail) {
-      setErrorMsg('Please enter your email address.');
-      return;
-    }
-    if (!cleanCode || cleanCode.length < 6) {
-      setErrorMsg('Please enter the 6-digit verification code from your email.');
-      return;
-    }
-
-    setVerifyingOtp(true);
-    try {
-      const supabase = createClient();
-
-      // Verify the 6-digit code when the user types it in
-      let { data: sessionData, error: verifyError } = await supabase.auth.verifyOtp({
-        email: userEmail,
-        token: cleanCode,
-        type: 'email',
-      });
-
-      // Fallback to 'signup' OTP type if needed
-      if (verifyError) {
-        const fallbackRes = await supabase.auth.verifyOtp({
-          email: userEmail,
-          token: cleanCode,
-          type: 'signup',
-        });
-        if (!fallbackRes.error && fallbackRes.data) {
-          sessionData = fallbackRes.data;
-          verifyError = null;
-        }
-      }
-
-      if (verifyError) {
-        // Fallback to direct Resend OTP verification (/api/auth/otp)
-        const apiVerifyRes = await fetch('/api/auth/otp', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'verify', email: userEmail, token: cleanCode }),
-        });
-        const apiVerifyData = await apiVerifyRes.json().catch(() => ({}));
-        if (apiVerifyRes.ok && apiVerifyData?.success && apiVerifyData?.user) {
-          await finalizeAuthenticatedSession(apiVerifyData.user, userEmail);
-          return;
-        }
-
-        setErrorMsg(verifyError.message || 'Invalid or expired 6-digit code. Please try again.');
-        setVerifyingOtp(false);
-        return;
-      }
-
-      const verifiedUser = sessionData?.user || sessionData?.session?.user;
-      if (verifiedUser) {
-        await finalizeAuthenticatedSession(verifiedUser, userEmail);
-        return;
-      }
-
-      setErrorMsg('Verification succeeded, but no session was returned. Please try again.');
-    } catch (err: any) {
-      setErrorMsg(err?.message || 'Failed to verify 6-digit code.');
-    } finally {
-      setVerifyingOtp(false);
-    }
-  };
-
-  // 4. Resend 6-Digit OTP
-  const handleResendConfirmation = async () => {
     const cleanEmail = email.trim().toLowerCase();
-    if (!cleanEmail) {
-      setErrorMsg('Please enter your email to resend the code.');
+    const cleanCode = confirmationCode.trim();
+
+    if (!cleanCode || cleanCode.length < 6) {
+      setError('Please enter the 6-digit confirmation code sent to your email.');
       return;
     }
-    setResendingEmail(true);
-    setResendStatus('');
-    try {
-      const supabase = createClient();
 
-      const { error } = await supabase.auth.signInWithOtp({
-        email: cleanEmail,
-        options: {
-          shouldCreateUser: true,
-        },
+    setLoading(true);
+    try {
+      const res = await fetch('/api/auth/otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'verify',
+          email: cleanEmail,
+          token: cleanCode,
+        }),
       });
 
-      if (error) {
-        const fallbackRes = await fetch('/api/auth/otp', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'send', email: cleanEmail }),
-        });
-        const fallbackData = await fallbackRes.json().catch(() => ({}));
-        if (fallbackRes.ok && fallbackData?.success) {
-          setOtpSent(true);
-          setResendStatus(`✓ New 6-digit code sent to ${cleanEmail}. Check your inbox and spam folder.`);
-        } else {
-          setResendStatus(`Failed to resend: ${fallbackData?.error || error.message}`);
-        }
-      } else {
-        setOtpSent(true);
-        setResendStatus(`✓ New 6-digit code sent to ${cleanEmail}. Check your inbox and spam folder.`);
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setError(
+          data.error ||
+            'Invalid or expired confirmation code. Please check your email or click Resend.'
+        );
+        setLoading(false);
+        return;
       }
+
+      setSuccessMsg('Email confirmed! Signing you in...');
+      await persistClientSessionAndRedirect({
+        id: data.user?.id || `usr_${Date.now()}`,
+        email: data.user?.email || cleanEmail,
+        name:
+          data.user?.name ||
+          data.user?.user_metadata?.full_name ||
+          fullName.trim() ||
+          cleanEmail.split('@')[0],
+      });
     } catch (err: any) {
-      setResendStatus(err.message || 'Failed to resend verification code.');
-    } finally {
-      setResendingEmail(false);
+      setError(err.message || 'Verification failed. Please try again.');
+      setLoading(false);
     }
   };
 
-  const switchTab = (tab: 'signin' | 'signup') => {
-    setActiveTab(tab);
-    setErrorMsg('');
-    setSuccessMsg('');
-    setResendStatus('');
-    setOtpSent(false);
-    setSixDigitCode('');
+  const handleResendConfirmation = async () => {
+    if (resendCooldown > 0 || resending) return;
+    resetMessages();
+    setResending(true);
+    try {
+      const origin = window.location.origin;
+      const res = await fetch('/api/auth/otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'resend',
+          email: email.trim().toLowerCase(),
+          origin,
+          next: nextParam,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setError(data.error || 'Could not resend confirmation email.');
+      } else {
+        setResendCooldown(30);
+        setSuccessMsg(
+          data.message ||
+            `A new confirmation email has been sent to ${email.trim().toLowerCase()}.`
+        );
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to resend confirmation email.');
+    } finally {
+      setResending(false);
+    }
   };
 
   return (
     <div
       style={{
+        maxWidth: '460px',
         width: '100%',
-        maxWidth: '430px',
         margin: '0 auto',
         background: '#ffffff',
-        border: '1.5px solid #e2e8f0',
-        borderRadius: '18px',
-        padding: '0',
-        boxShadow: '0 20px 40px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.04)',
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden',
-        boxSizing: 'border-box',
+        borderRadius: '20px',
+        boxShadow:
+          '0 20px 45px rgba(15, 23, 42, 0.08), 0 4px 12px rgba(15, 23, 42, 0.04)',
+        border: '1px solid #e2e8f0',
+        padding: '2.25rem 2rem',
       }}
     >
-      {/* Header */}
-      <div
-        style={{
-          padding: '1.35rem 1.5rem 0.85rem',
-          borderBottom: '1px solid #f1f5f9',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-start',
-        }}
-      >
-        <div>
-          <div
-            style={{
-              fontSize: '0.75rem',
-              fontWeight: 700,
-              color: '#2563eb',
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-              marginBottom: '0.2rem',
-            }}
-          >
-            {activeTab === 'signin' ? 'WELCOME BACK' : 'GET STARTED'}
-          </div>
-          <h2
-            style={{
-              margin: 0,
-              fontSize: '1.45rem',
-              color: '#0f172a',
-              fontWeight: 700,
-              letterSpacing: '-0.01em',
-            }}
-          >
-            {activeTab === 'signin' ? 'Log in to UniNest' : 'Create your account'}
-          </h2>
-          <p
-            style={{
-              margin: '0.3rem 0 0 0',
-              fontSize: '0.84rem',
-              color: '#64748b',
-              lineHeight: 1.4,
-            }}
-          >
-            {reason ||
-              (activeTab === 'signin'
-                ? 'Sign in with Google or a 6-digit email verification code.'
-                : 'Join UniNest to book agent viewings, save properties, and list items.')}
-          </p>
+      {/* Brand Header */}
+      <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+        <div
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.4rem',
+            fontSize: '1.5rem',
+            fontWeight: 800,
+            color: '#0f172a',
+            marginBottom: '0.35rem',
+          }}
+        >
+          Uni<span style={{ color: '#2563eb' }}>Nest</span>
         </div>
-
-        {onClose && (
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            style={{
-              background: '#f1f5f9',
-              border: 'none',
-              borderRadius: '50%',
-              width: '32px',
-              height: '32px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              color: '#64748b',
-              fontSize: '1.1rem',
-              marginLeft: '0.75rem',
-            }}
-          >
-            &times;
-          </button>
-        )}
+        <p style={{ fontSize: '0.9rem', color: '#64748b', margin: 0 }}>
+          {awaitingConfirmation
+            ? 'Confirm your email address to activate your account'
+            : tab === 'signin'
+            ? 'Welcome back! Sign in to access student housing & deals'
+            : 'Create your verified student account in seconds'}
+        </p>
       </div>
 
-      {/* Body Content */}
-      <div style={{ padding: '1.15rem 1.5rem 1.35rem' }}>
-        {/* Google OAuth Button */}
-        <button
-          type="button"
-          onClick={handleGoogleSignIn}
-          disabled={loading}
-          style={{
-            width: '100%',
-            height: '44px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '0.75rem',
-            background: '#ffffff',
-            border: '1.5px solid #e2e8f0',
-            color: '#0f172a',
-            borderRadius: '10px',
-            fontWeight: 600,
-            fontSize: '0.94rem',
-            boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)',
-            cursor: 'pointer',
-            transition: 'all 0.15s ease',
-            marginBottom: '0.9rem',
-          }}
-          onMouseOver={(e) => {
-            e.currentTarget.style.borderColor = '#cbd5e1';
-            e.currentTarget.style.background = '#f8fafc';
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.borderColor = '#e2e8f0';
-            e.currentTarget.style.background = '#ffffff';
-          }}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24">
-            <path
-              fill="#4285F4"
-              d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-            />
-            <path
-              fill="#34A853"
-              d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-            />
-            <path
-              fill="#FBBC05"
-              d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-            />
-            <path
-              fill="#EA4335"
-              d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-            />
-          </svg>
-          {loading ? 'Connecting Google...' : 'Continue with Google'}
-        </button>
-
-        {/* Divider */}
+      {/* Sign In / Sign Up Tabs */}
+      {!awaitingConfirmation && (
         <div
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            margin: '0 0 0.9rem 0',
-            color: '#94a3b8',
-            fontSize: '0.75rem',
-            fontWeight: 700,
-          }}
-        >
-          <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }} />
-          <span style={{ padding: '0 0.75rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            OR WITH 6-DIGIT EMAIL OTP
-          </span>
-          <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }} />
-        </div>
-
-        {/* Tabs: Log In vs Create Account */}
-        <div
-          style={{
-            display: 'flex',
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
             background: '#f1f5f9',
-            padding: '0.25rem',
-            borderRadius: '10px',
-            marginBottom: '1rem',
+            padding: '0.3rem',
+            borderRadius: '12px',
+            marginBottom: '1.5rem',
           }}
         >
           <button
             type="button"
-            onClick={() => switchTab('signin')}
+            onClick={() => handleTabSwitch('signin')}
             style={{
-              flex: 1,
-              padding: '0.55rem',
+              padding: '0.6rem',
+              borderRadius: '9px',
               border: 'none',
-              borderRadius: '8px',
-              fontSize: '0.88rem',
               fontWeight: 600,
+              fontSize: '0.9rem',
               cursor: 'pointer',
+              background: tab === 'signin' ? '#ffffff' : 'transparent',
+              color: tab === 'signin' ? '#0f172a' : '#64748b',
+              boxShadow:
+                tab === 'signin' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none',
               transition: 'all 0.15s ease',
-              background: activeTab === 'signin' ? '#ffffff' : 'transparent',
-              color: activeTab === 'signin' ? '#0f172a' : '#64748b',
-              boxShadow: activeTab === 'signin' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
             }}
           >
-            Log In
+            Sign In
           </button>
           <button
             type="button"
-            onClick={() => switchTab('signup')}
+            onClick={() => handleTabSwitch('signup')}
             style={{
-              flex: 1,
-              padding: '0.55rem',
+              padding: '0.6rem',
+              borderRadius: '9px',
               border: 'none',
-              borderRadius: '8px',
-              fontSize: '0.88rem',
               fontWeight: 600,
+              fontSize: '0.9rem',
               cursor: 'pointer',
+              background: tab === 'signup' ? '#ffffff' : 'transparent',
+              color: tab === 'signup' ? '#0f172a' : '#64748b',
+              boxShadow:
+                tab === 'signup' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none',
               transition: 'all 0.15s ease',
-              background: activeTab === 'signup' ? '#ffffff' : 'transparent',
-              color: activeTab === 'signup' ? '#0f172a' : '#64748b',
-              boxShadow: activeTab === 'signup' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
             }}
           >
             Create Account
           </button>
         </div>
+      )}
 
-        {/* General Error Banner */}
-        {errorMsg && (
-          <div
+      {/* Alerts */}
+      {error && (
+        <div
+          style={{
+            background: '#fef2f2',
+            border: '1px solid #fecaca',
+            color: '#b91c1c',
+            padding: '0.85rem 1rem',
+            borderRadius: '10px',
+            fontSize: '0.86rem',
+            marginBottom: '1.25rem',
+            lineHeight: 1.5,
+          }}
+        >
+          {error}
+        </div>
+      )}
+
+      {successMsg && (
+        <div
+          style={{
+            background: '#f0fdf4',
+            border: '1px solid #bbf7d0',
+            color: '#15803d',
+            padding: '0.85rem 1rem',
+            borderRadius: '10px',
+            fontSize: '0.86rem',
+            marginBottom: '1.25rem',
+            lineHeight: 1.5,
+          }}
+        >
+          {successMsg}
+        </div>
+      )}
+
+      {!awaitingConfirmation ? (
+        <>
+          {/* 1. Google OAuth */}
+          <button
+            type="button"
+            onClick={handleGoogleSignIn}
+            disabled={loading}
             style={{
-              background: '#fee2e2',
-              border: '1px solid #fca5a5',
-              color: '#991b1b',
-              padding: '0.65rem 0.9rem',
-              borderRadius: '8px',
-              fontSize: '0.85rem',
-              marginBottom: '1rem',
-              lineHeight: 1.4,
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.65rem',
+              padding: '0.78rem 1rem',
+              borderRadius: '10px',
+              border: '1.5px solid #cbd5e1',
+              background: '#ffffff',
+              color: '#0f172a',
+              fontWeight: 600,
+              fontSize: '0.92rem',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              transition: 'background 0.15s ease, border-color 0.15s ease',
+              marginBottom: '1.25rem',
             }}
           >
-            {errorMsg}
-          </div>
-        )}
-
-        {/* General Success Banner */}
-        {successMsg && !otpSent && (
-          <div
-            style={{
-              background: '#dcfce7',
-              border: '1px solid #86efac',
-              color: '#166534',
-              padding: '0.65rem 0.9rem',
-              borderRadius: '8px',
-              fontSize: '0.85rem',
-              marginBottom: '1rem',
-              lineHeight: 1.4,
-            }}
-          >
-            {successMsg}
-          </div>
-        )}
-
-        {/* 6-Digit OTP Verification Box */}
-        {otpSent ? (
-          <div
-            style={{
-              background: '#f0fdf4',
-              border: '1.5px solid #86efac',
-              borderRadius: '12px',
-              padding: '1rem 1.1rem',
-              marginBottom: '1rem',
-              color: '#166534',
-              fontSize: '0.86rem',
-              lineHeight: 1.45,
-            }}
-          >
-            <div style={{ fontWeight: 700, marginBottom: '0.3rem', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.92rem' }}>
-              <span>🔐</span> Enter 6-Digit Verification Code
-            </div>
-            <div style={{ marginBottom: '0.85rem', color: '#15803d' }}>
-              We sent a 6-digit OTP to <strong>{email.trim()}</strong>. Type the code below to verify and sign in automatically.
-            </div>
-
-            <form onSubmit={handleVerifyOtp} style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-              <input
-                id="auth-otp-code-input"
-                type="text"
-                inputMode="numeric"
-                maxLength={6}
-                value={sixDigitCode}
-                onChange={(e) => setSixDigitCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                placeholder="123456"
-                autoComplete="one-time-code"
-                required
-                style={{
-                  width: '100%',
-                  boxSizing: 'border-box',
-                  padding: '0.7rem 0.9rem',
-                  border: '1.5px solid #86efac',
-                  borderRadius: '8px',
-                  fontSize: '1.25rem',
-                  fontWeight: 700,
-                  letterSpacing: '0.35em',
-                  textAlign: 'center',
-                  color: '#0f172a',
-                  background: '#ffffff',
-                  outline: 'none',
-                }}
+            <svg width="18" height="18" viewBox="0 0 24 24">
+              <path
+                fill="#EA4335"
+                d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.4 1 3.5 3.6 1.6 7.4l3.7 2.8C6.2 7.2 8.9 5 12 5z"
               />
+              <path
+                fill="#4285F4"
+                d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.6l3.7 2.9c2.2-2 3.7-5 3.7-8.7z"
+              />
+              <path
+                fill="#FBBC05"
+                d="M5.3 14.8c-.2-.8-.4-1.6-.4-2.5s.2-1.7.4-2.5L1.6 7C.6 9 0 11.2 0 13.5s.6 4.5 1.6 6.5l3.7-2.9z"
+              />
+              <path
+                fill="#34A853"
+                d="M12 24c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3.1 0-5.8-2.1-6.7-5l-3.7 2.9C3.5 21.4 7.4 24 12 24z"
+              />
+            </svg>
+            Continue with Google
+          </button>
 
-              <button
-                type="submit"
-                disabled={verifyingOtp || sixDigitCode.trim().length < 6}
-                style={{
-                  width: '100%',
-                  height: '42px',
-                  background: '#16a34a',
-                  color: '#ffffff',
-                  border: 'none',
-                  borderRadius: '8px',
-                  fontSize: '0.92rem',
-                  fontWeight: 700,
-                  cursor: verifyingOtp || sixDigitCode.trim().length < 6 ? 'not-allowed' : 'pointer',
-                  opacity: verifyingOtp || sixDigitCode.trim().length < 6 ? 0.65 : 1,
-                  boxShadow: '0 2px 6px rgba(22, 163, 74, 0.25)',
-                }}
-              >
-                {verifyingOtp ? 'Verifying 6-Digit Code...' : 'Verify & Continue'}
-              </button>
-            </form>
+          {/* Divider */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem',
+              marginBottom: '1.25rem',
+              color: '#94a3b8',
+              fontSize: '0.78rem',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              fontWeight: 600,
+            }}
+          >
+            <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }} />
+            <span>or with email &amp; password</span>
+            <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }} />
+          </div>
 
-            <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'space-between' }}>
-              <button
-                type="button"
-                onClick={handleResendConfirmation}
-                disabled={resendingEmail}
-                style={{
-                  background: '#166534',
-                  color: '#ffffff',
-                  border: 'none',
-                  padding: '0.35rem 0.75rem',
-                  borderRadius: '6px',
-                  fontSize: '0.78rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                {resendingEmail ? 'Resending code...' : 'Resend 6-digit code'}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setOtpSent(false);
-                  setSixDigitCode('');
-                  setErrorMsg('');
-                  setSuccessMsg('');
-                }}
-                style={{
-                  background: 'transparent',
-                  color: '#166534',
-                  border: '1px solid #86efac',
-                  padding: '0.35rem 0.75rem',
-                  borderRadius: '6px',
-                  fontSize: '0.78rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                Change Email
-              </button>
-            </div>
-
-            {resendStatus && (
-              <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#15803d', fontWeight: 500 }}>
-                {resendStatus}
+          {/* 2. Email & Password Form */}
+          <form onSubmit={handleEmailPasswordSubmit}>
+            {tab === 'signup' && (
+              <div style={{ marginBottom: '0.9rem' }}>
+                <label
+                  htmlFor="auth-fullname"
+                  style={{
+                    display: 'block',
+                    fontSize: '0.84rem',
+                    fontWeight: 600,
+                    color: '#1e293b',
+                    marginBottom: '0.35rem',
+                  }}
+                >
+                  Full Name
+                </label>
+                <input
+                  id="auth-fullname"
+                  type="text"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="e.g. Jane Wanjiku"
+                  style={{
+                    width: '100%',
+                    padding: '0.72rem 0.9rem',
+                    borderRadius: '10px',
+                    border: '1.5px solid #cbd5e1',
+                    fontSize: '0.92rem',
+                    outline: 'none',
+                  }}
+                />
               </div>
             )}
-          </div>
-        ) : (
-          /* Email OTP Form (Passwordless) */
-          <form onSubmit={handleSendOtp} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', width: '100%' }}>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
+
+            <div style={{ marginBottom: '0.9rem' }}>
               <label
-                htmlFor="auth-email-input"
+                htmlFor="auth-email"
                 style={{
-                  fontSize: '0.86rem',
+                  display: 'block',
+                  fontSize: '0.84rem',
                   fontWeight: 600,
                   color: '#1e293b',
                   marginBottom: '0.35rem',
                 }}
               >
-                Email Address
+                Email Address *
               </label>
               <input
-                id="auth-email-input"
+                id="auth-email"
                 type="email"
+                required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@uni-nest.app"
-                autoComplete="email"
-                required
+                placeholder="you@uni-nest.app or student@gmail.com"
                 style={{
                   width: '100%',
-                  boxSizing: 'border-box',
-                  padding: '0.7rem 0.9rem',
+                  padding: '0.72rem 0.9rem',
+                  borderRadius: '10px',
                   border: '1.5px solid #cbd5e1',
-                  borderRadius: '8px',
-                  fontSize: '0.95rem',
-                  color: '#0f172a',
+                  fontSize: '0.92rem',
                   outline: 'none',
-                  background: '#ffffff',
-                  transition: 'border-color 0.2s, box-shadow 0.2s',
                 }}
-                onFocus={(e) => {
-                  e.target.style.borderColor = '#2563eb';
-                  e.target.style.boxShadow = '0 0 0 3px rgba(37, 99, 235, 0.12)';
+              />
+            </div>
+
+            <div style={{ marginBottom: '1.25rem' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '0.35rem',
                 }}
-                onBlur={(e) => {
-                  e.target.style.borderColor = '#cbd5e1';
-                  e.target.style.boxShadow = 'none';
+              >
+                <label
+                  htmlFor="auth-password"
+                  style={{
+                    fontSize: '0.84rem',
+                    fontWeight: 600,
+                    color: '#1e293b',
+                  }}
+                >
+                  Password *
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#2563eb',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    padding: 0,
+                  }}
+                >
+                  {showPassword ? 'Hide' : 'Show'}
+                </button>
+              </div>
+              <input
+                id="auth-password"
+                type={showPassword ? 'text' : 'password'}
+                required
+                minLength={6}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={
+                  tab === 'signup'
+                    ? 'Create a password (min. 6 characters)'
+                    : 'Enter your password'
+                }
+                style={{
+                  width: '100%',
+                  padding: '0.72rem 0.9rem',
+                  borderRadius: '10px',
+                  border: '1.5px solid #cbd5e1',
+                  fontSize: '0.92rem',
+                  outline: 'none',
                 }}
               />
             </div>
@@ -711,103 +573,150 @@ export default function AuthCard({
             <button
               type="submit"
               disabled={loading}
+              className="btn btn-primary"
               style={{
                 width: '100%',
-                height: '42px',
-                padding: '0.6rem 1.25rem',
+                padding: '0.82rem',
+                borderRadius: '10px',
                 fontWeight: 600,
-                borderRadius: '8px',
                 fontSize: '0.95rem',
-                marginTop: '0.25rem',
-                background: '#2563eb',
-                color: '#ffffff',
-                border: 'none',
                 cursor: loading ? 'not-allowed' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 2px 6px rgba(37, 99, 235, 0.25)',
-                transition: 'background-color 0.15s ease',
-                opacity: loading ? 0.7 : 1,
-              }}
-              onMouseOver={(e) => {
-                if (!loading) e.currentTarget.style.backgroundColor = '#1d4ed8';
-              }}
-              onMouseOut={(e) => {
-                if (!loading) e.currentTarget.style.backgroundColor = '#2563eb';
               }}
             >
-              {loading ? 'Sending 6-Digit Code...' : '🔢 Send 6-Digit Verification Code'}
+              {loading
+                ? tab === 'signup'
+                  ? 'Creating Account & Sending Confirmation...'
+                  : 'Signing In...'
+                : tab === 'signup'
+                ? 'Create Account'
+                : 'Sign In'}
             </button>
           </form>
-        )}
+        </>
+      ) : (
+        /* Step 2: Sign-Up Email Confirmation Screen */
+        <form onSubmit={handleVerifyConfirmationCode}>
+          <div
+            style={{
+              background: '#eff6ff',
+              border: '1px solid #bfdbfe',
+              borderRadius: '12px',
+              padding: '1rem',
+              marginBottom: '1.25rem',
+              fontSize: '0.86rem',
+              color: '#1e3a8a',
+              lineHeight: 1.5,
+            }}
+          >
+            📧 Confirmation email sent to <strong>{email}</strong>.<br />
+            Enter the <strong>6-digit verification code</strong> from the email below (or click the confirmation link inside the email) to complete your sign up.
+          </div>
 
-        {/* Switch prompt */}
-        <p
-          style={{
-            textAlign: 'center',
-            margin: '1rem 0 0 0',
-            fontSize: '0.86rem',
-            color: '#64748b',
-          }}
-        >
-          {activeTab === 'signin' ? (
-            <>
-              Don&apos;t have an account?{' '}
-              <button
-                type="button"
-                onClick={() => switchTab('signup')}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  padding: 0,
-                  color: '#2563eb',
-                  fontWeight: 600,
-                  fontSize: '0.86rem',
-                  cursor: 'pointer',
-                  textDecoration: 'none',
-                }}
-              >
-                Sign up
-              </button>
-            </>
-          ) : (
-            <>
-              Already have an account?{' '}
-              <button
-                type="button"
-                onClick={() => switchTab('signin')}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  padding: 0,
-                  color: '#2563eb',
-                  fontWeight: 600,
-                  fontSize: '0.86rem',
-                  cursor: 'pointer',
-                  textDecoration: 'none',
-                }}
-              >
-                Log in
-              </button>
-            </>
-          )}
-        </p>
-      </div>
+          <div style={{ marginBottom: '1.15rem' }}>
+            <label
+              htmlFor="auth-confirm-code"
+              style={{
+                display: 'block',
+                fontSize: '0.84rem',
+                fontWeight: 600,
+                color: '#1e293b',
+                marginBottom: '0.4rem',
+              }}
+            >
+              6-Digit Email Confirmation Code *
+            </label>
+            <input
+              id="auth-confirm-code"
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              required
+              value={confirmationCode}
+              onChange={(e) =>
+                setConfirmationCode(e.target.value.replace(/\D/g, ''))
+              }
+              placeholder="123456"
+              style={{
+                width: '100%',
+                padding: '0.85rem 1rem',
+                borderRadius: '10px',
+                border: '2px solid #2563eb',
+                fontSize: '1.4rem',
+                fontWeight: 700,
+                letterSpacing: '8px',
+                textAlign: 'center',
+                fontFamily: 'monospace',
+                outline: 'none',
+              }}
+            />
+          </div>
 
-      {/* Footer */}
-      <div
-        style={{
-          background: '#f8fafc',
-          padding: '0.75rem 1.25rem',
-          borderTop: '1px solid #f1f5f9',
-          textAlign: 'center',
-          fontSize: '0.76rem',
-          color: '#64748b',
-        }}
-      >
-        🔒 Secure passwordless authentication powered by Google &amp; Supabase OTP.
-      </div>
+          <button
+            type="submit"
+            disabled={loading}
+            className="btn btn-primary"
+            style={{
+              width: '100%',
+              padding: '0.82rem',
+              borderRadius: '10px',
+              fontWeight: 600,
+              fontSize: '0.95rem',
+              marginBottom: '0.85rem',
+              cursor: loading ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {loading ? 'Verifying & Confirming...' : 'Verify & Confirm Account'}
+          </button>
+
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              fontSize: '0.84rem',
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setAwaitingConfirmation(false);
+                setConfirmationCode('');
+                resetMessages();
+              }}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#64748b',
+                cursor: 'pointer',
+                fontWeight: 500,
+                padding: 0,
+              }}
+            >
+              &larr; Back to {tab === 'signup' ? 'Sign Up' : 'Sign In'}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleResendConfirmation}
+              disabled={resendCooldown > 0 || resending}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: resendCooldown > 0 ? '#94a3b8' : '#2563eb',
+                cursor: resendCooldown > 0 ? 'not-allowed' : 'pointer',
+                fontWeight: 600,
+                padding: 0,
+              }}
+            >
+              {resending
+                ? 'Sending...'
+                : resendCooldown > 0
+                ? `Resend Email (${resendCooldown}s)`
+                : 'Resend Confirmation Email'}
+            </button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }

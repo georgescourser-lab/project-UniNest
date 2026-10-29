@@ -30,6 +30,46 @@ function AuthCallbackContent() {
           return;
         }
 
+        // 1b. Check for signed email confirmation link token (?verify_token=...)
+        const verifyToken = searchParams.get('verify_token');
+        if (verifyToken) {
+          setMessage('Confirming your email address...');
+          const res = await fetch('/api/auth/otp', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'verify_link', verifyToken }),
+          });
+          const data = await res.json();
+          if (!res.ok || data.error) {
+            if (!isMounted) return;
+            setStatus('error');
+            setMessage(data.error || 'Confirmation link is invalid or expired.');
+            return;
+          }
+
+          if (data?.user) {
+            const userPayload = {
+              id: data.user.id,
+              email: data.user.email || '',
+              name: data.user.name || data.user.email?.split('@')[0] || 'Student',
+            };
+            try {
+              localStorage.setItem('uninest_user', JSON.stringify(userPayload));
+              document.cookie = `uninest_user_client=${encodeURIComponent(JSON.stringify(userPayload))}; path=/; max-age=2592000; SameSite=Lax`;
+            } catch (e) {}
+
+            await syncUserSession(userPayload);
+
+            if (!isMounted) return;
+            setStatus('success');
+            setMessage('Email confirmed! Welcome to UniNest. Redirecting...');
+            setTimeout(() => {
+              window.location.href = nextParam;
+            }, 600);
+            return;
+          }
+        }
+
         // 2. Implicit Flow: Check URL hash fragment (#access_token=...&refresh_token=...)
         const hash = window.location.hash;
         if (hash && hash.includes('access_token')) {
@@ -136,7 +176,7 @@ function AuthCallbackContent() {
         const timer = setTimeout(() => {
           if (!isMounted) return;
           setStatus('error');
-          setMessage('No valid confirmation tokens found in the URL. Please sign in with Google or a 6-digit email verification code.');
+          setMessage('No valid confirmation tokens found in the URL. Please log in with your email and password.');
         }, 2500);
 
         return () => clearTimeout(timer);
