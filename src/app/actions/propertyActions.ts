@@ -141,6 +141,11 @@ export async function deleteProperty(propertyId: number) {
     return { error: 'You must be logged in to delete a property.' }
   }
 
+  const verifiedAgentEmails = ['georgescourser@gmail.com', 'oderocarilus@gmail.com']
+  if (!verifiedAgentEmails.includes((user.email || '').trim().toLowerCase())) {
+    return { error: 'Unauthorized: Only verified agents can delete properties.' }
+  }
+
   const supabase = await createClient()
 
   try {

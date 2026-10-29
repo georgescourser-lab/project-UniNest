@@ -5,9 +5,18 @@ import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 
 const SESSION_COOKIE_NAME = 'uninest_user_session'
+const CLIENT_COOKIE_NAME = 'uninest_user_client'
 const THIRTY_DAYS = 60 * 60 * 24 * 30
 
-const CLIENT_COOKIE_NAME = 'uninest_user_client'
+const VERIFIED_AGENT_EMAILS = [
+  'georgescourser@gmail.com',
+  'oderocarilus@gmail.com',
+]
+
+export async function isVerifiedAgentEmail(email?: string | null): Promise<boolean> {
+  if (!email) return false
+  return VERIFIED_AGENT_EMAILS.includes(email.trim().toLowerCase())
+}
 
 async function setSessionCookie(user: { id: string; email: string; name?: string }) {
   try {
@@ -55,36 +64,6 @@ export async function syncUserSession(user: { id: string; email: string; name?: 
   return { success: true }
 }
 
-export async function signInWithEmailOnly(email: string) {
-  const cleanEmail = (email || '').trim().toLowerCase()
-  if (!cleanEmail || !cleanEmail.includes('@')) {
-    return { error: 'Please enter a valid email address.' }
-  }
-
-  const name = cleanEmail.split('@')[0]
-  const id = 'user_' + cleanEmail.replace(/[^a-z0-9]/g, '_')
-  const userPayload = {
-    id,
-    email: cleanEmail,
-    name,
-  }
-
-  await setSessionCookie(userPayload)
-
-  return {
-    success: true,
-    user: {
-      id,
-      email: cleanEmail,
-      name,
-      user_metadata: {
-        full_name: name,
-        display_name: name,
-      },
-    },
-  }
-}
-
 export async function clearUserSession() {
   await clearSessionCookie()
   return { success: true }
@@ -126,61 +105,6 @@ export async function getCurrentUser() {
   return null
 }
 
-export async function login(prevState: any, formData: FormData) {
-  const email = (formData.get('email') as string)?.trim().toLowerCase()
-  const password = formData.get('password') as string
-  const next = (formData.get('next') as string) || '/search'
-
-  const supabase = await createClient()
-
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  })
-
-  if (error) {
-    return { error: error.message }
-  }
-
-  if (data?.user) {
-    await setSessionCookie({
-      id: data.user.id,
-      email: data.user.email || email,
-      name: data.user.user_metadata?.full_name || email.split('@')[0]
-    })
-  }
-
-  const safeNext = next.startsWith('/') ? next : '/search'
-  redirect(safeNext)
-}
-
-export async function signup(prevState: any, formData: FormData) {
-  const email = (formData.get('email') as string)?.trim().toLowerCase()
-  const password = formData.get('password') as string
-  const next = (formData.get('next') as string) || '/search'
-
-  const supabase = await createClient()
-
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
-  })
-
-  if (error) {
-    return { error: error.message }
-  }
-
-  const userId = data?.user?.id || `user_${Date.now()}`
-  await setSessionCookie({
-    id: userId,
-    email,
-    name: email.split('@')[0]
-  })
-
-  const safeNext = next.startsWith('/') ? next : '/search'
-  redirect(safeNext)
-}
-
 export async function logout() {
   try {
     const supabase = await createClient()
@@ -189,173 +113,6 @@ export async function logout() {
 
   await clearSessionCookie()
   redirect('/login')
-}
-
-// Unified Auth Server Actions (Client-invokable)
-
-export async function loginWithPassword(email: string, password: string) {
-  const cleanEmail = email.trim().toLowerCase()
-  const supabase = await createClient()
-
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: cleanEmail,
-    password,
-  })
-
-  if (error) {
-    const isUnconfirmed = error.message.toLowerCase().includes('not confirmed') || error.message.toLowerCase().includes('unconfirmed')
-    return { 
-      error: isUnconfirmed 
-        ? `Your email address has not been confirmed yet. Please check your inbox for the security confirmation link, or click below to resend.` 
-        : error.message,
-      isEmailUnconfirmed: isUnconfirmed,
-      email: cleanEmail
-    }
-  }
-
-  if (data?.user) {
-    await setSessionCookie({
-      id: data.user.id,
-      email: data.user.email || cleanEmail,
-      name: data.user.user_metadata?.full_name || cleanEmail.split('@')[0]
-    })
-  }
-
-  return { success: true, user: data.user }
-}
-
-export async function signupWithPassword(
-  email: string,
-  password: string,
-  origin: string,
-  next: string,
-  metadata?: {
-    fullName?: string;
-    birthDate?: string;
-    gender?: string;
-    marketingOptIn?: boolean;
-  }
-) {
-  const cleanEmail = email.trim().toLowerCase()
-  const supabase = await createClient()
-  const redirectTo = `${origin}/auth/callback?next=${encodeURIComponent(next)}`
-  
-  const { data, error } = await supabase.auth.signUp({
-    email: cleanEmail,
-    password,
-    options: {
-      data: {
-        full_name: metadata?.fullName,
-        display_name: metadata?.fullName,
-        birth_date: metadata?.birthDate,
-        gender: metadata?.gender,
-        marketing_opt_in: metadata?.marketingOptIn,
-      },
-      emailRedirectTo: redirectTo,
-    },
-  })
-
-  if (error) {
-    const errorMsg = String(error.message || '').trim()
-    const errorStatus = (error as any).status
-    const errorName = (error as any).name
-
-    // 1. If user is already registered in Supabase, attempt sign in with provided password
-    if (errorMsg.toLowerCase().includes('already registered')) {
-      const signInRes = await supabase.auth.signInWithPassword({
-        email: cleanEmail,
-        password,
-      })
-      if (!signInRes.error && signInRes.data.user) {
-        await setSessionCookie({
-          id: signInRes.data.user.id,
-          email: cleanEmail,
-          name: metadata?.fullName || cleanEmail.split('@')[0]
-        })
-        return { success: true, hasSession: true, user: signInRes.data.user }
-      }
-      return { 
-        error: 'An account with this email already exists. Please log in or check your inbox for confirmation.',
-        isExistingUser: true
-      }
-    }
-
-    // 2. Handle Supabase SMTP timeout (AuthRetryableFetchError, status 504, "{}" message, or timeout)
-    const isTimeoutOrMailerDelay =
-      errorStatus === 504 ||
-      errorName === 'AuthRetryableFetchError' ||
-      errorMsg === '{}' ||
-      errorMsg === '' ||
-      errorMsg.includes('504') ||
-      errorMsg.toLowerCase().includes('timeout') ||
-      errorMsg.toLowerCase().includes('upstream')
-
-    if (isTimeoutOrMailerDelay) {
-      // User registration received - establish session and queue security verification notice
-      const userId = `user_${Date.now()}`
-      const userName = metadata?.fullName || cleanEmail.split('@')[0]
-      await setSessionCookie({
-        id: userId,
-        email: cleanEmail,
-        name: userName
-      })
-      return {
-        success: true,
-        needsConfirmation: true,
-        hasSession: true,
-        email: cleanEmail,
-        message: `Security confirmation email sent to ${cleanEmail}. Please check your inbox (and spam folder) to confirm your account.`,
-        user: { id: userId, email: cleanEmail }
-      }
-    }
-
-    return { error: errorMsg || 'Unable to complete registration. Please try again or continue with Google.' }
-  }
-
-  // When email confirmation is required, Supabase returns data.user with data.session = null.
-  // In that case, we require the user to confirm via email before creating their session.
-  const needsConfirmation = !data.session
-
-  if (!needsConfirmation && data?.user) {
-    const userId = data.user.id
-    const userName = metadata?.fullName || data.user.user_metadata?.full_name || cleanEmail.split('@')[0]
-    await setSessionCookie({
-      id: userId,
-      email: cleanEmail,
-      name: userName
-    })
-  }
-
-  return { 
-    success: true, 
-    needsConfirmation,
-    hasSession: !needsConfirmation,
-    email: cleanEmail,
-    message: needsConfirmation
-      ? `A security confirmation email has been sent to ${cleanEmail}. Please check your inbox and click the link to confirm your account.`
-      : `Account created successfully! Check your email for confirmation.`,
-    user: data.user 
-  }
-}
-
-export async function resendConfirmationEmailAction(email: string, origin: string, next: string = '/search') {
-  const cleanEmail = email.trim().toLowerCase()
-  const supabase = await createClient()
-  const redirectTo = `${origin}/auth/callback?next=${encodeURIComponent(next)}`
-
-  const { error } = await supabase.auth.resend({
-    type: 'signup',
-    email: cleanEmail,
-    options: {
-      emailRedirectTo: redirectTo,
-    },
-  })
-
-  if (error) {
-    return { error: error.message }
-  }
-
-  return { success: true, message: `Security confirmation email resent to ${cleanEmail}. Please check your inbox and spam folder.` }
 }
 
 export async function sendMagicLinkAction(email: string, origin: string, next: string) {
@@ -487,10 +244,10 @@ export async function verifyPhoneOtpAction(phone: string, token: string) {
   if (data?.user) {
     await setSessionCookie({
       id: data.user.id,
-      email: data.user.email || phone.trim(),
-      name: phone.trim()
+      email: data.user.email || phone,
+      name: data.user.user_metadata?.full_name || phone
     })
   }
 
-  return { success: true, session: data.session }
+  return { success: true, user: data.user }
 }

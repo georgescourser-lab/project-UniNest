@@ -136,7 +136,7 @@ function AuthCallbackContent() {
         const timer = setTimeout(() => {
           if (!isMounted) return;
           setStatus('error');
-          setMessage('No valid confirmation tokens found in the URL. Please log in with your email and password.');
+          setMessage('No valid confirmation tokens found in the URL. Please sign in with Google or a 6-digit email verification code.');
         }, 2500);
 
         return () => clearTimeout(timer);

@@ -2,14 +2,31 @@
 
 import { useActionState, useEffect, useState } from 'react';
 import { addProperty, getAgents } from '@/app/actions/propertyActions';
+import { getCurrentUser } from '@/app/actions/authActions';
+import { useAuth } from '@/context/AuthContext';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
 export default function PostPropertyPage() {
   const [state, formAction, pending] = useActionState(addProperty, null);
   const [agents, setAgents] = useState<any[]>([]);
+  const { user, isLoading } = useAuth();
+  const router = useRouter();
 
   const [previewFiles, setPreviewFiles] = useState<string[]>([]);
   const [imageUrlInput, setImageUrlInput] = useState('');
+
+  useEffect(() => {
+    if (!isLoading && !user) {
+      getCurrentUser().then((serverUser) => {
+        if (!serverUser) {
+          router.replace('/login?next=/post-property');
+        }
+      }).catch(() => {
+        router.replace('/login?next=/post-property');
+      });
+    }
+  }, [isLoading, user, router]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;

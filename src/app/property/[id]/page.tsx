@@ -37,8 +37,8 @@ export default async function PropertyDetailPage({ params }: PageProps) {
     isFavorite = userFavorites.some((f: any) => f.property_id === propertyIdNum);
   }
 
-  const adminEmails = process.env.ADMIN_EMAILS?.split(',') || [];
-  const isAdmin = user ? adminEmails.includes(user.email || '') : false;
+  const verifiedAgentEmails = ['georgescourser@gmail.com', 'oderocarilus@gmail.com'];
+  const isAdmin = user ? verifiedAgentEmails.includes((user.email || '').trim().toLowerCase()) : false;
 
   let property = propertyData;
   if (!property) {
@@ -162,7 +162,7 @@ export default async function PropertyDetailPage({ params }: PageProps) {
             {/* Agent-Controlled Appointment Request Form */}
             <PropertyInquiryForm propertyId={property.id} propertyTitle={property.title || 'Property'} user={user} />
 
-            {(isAdmin || !!user) && (
+            {isAdmin && (
               <form action={async () => {
                 'use server';
                 const res = await deleteProperty(property.id);

@@ -436,13 +436,13 @@
   // =========================================================================
 
   function openInquiryModal(itemId) {
-    if (window.UniAuth) {
-      const allowed = window.UniAuth.requireAuth(() => {
-        _doOpenInquiryModal(itemId);
-      }, { reason: 'Sign in to request an inspection and contact the authorized agent.' });
-      if (!allowed) return;
+    if (!window.UniAuth) {
+      alert('Authentication initializing. Please try again.');
+      return;
     }
-    _doOpenInquiryModal(itemId);
+    window.UniAuth.requireAuth(() => {
+      _doOpenInquiryModal(itemId);
+    }, { reason: 'Sign in to request an inspection and contact the authorized agent.' });
   }
 
   function _doOpenInquiryModal(itemId) {
@@ -485,6 +485,14 @@
 
   function handleInquirySubmit(event) {
     event.preventDefault();
+    if (!window.UniAuth || !window.UniAuth.isAuthenticated()) {
+      if (window.UniAuth) {
+        window.UniAuth.requireAuth(() => {
+          handleInquirySubmit(event);
+        }, { reason: 'Please sign in before submitting an inspection request.' });
+      }
+      return;
+    }
     const form = event.target;
 
     const itemId = parseInt(form['inq-item-id'].value);
@@ -563,13 +571,13 @@
   // =========================================================================
 
   function openPostModal() {
-    if (window.UniAuth) {
-      const allowed = window.UniAuth.requireAuth(() => {
-        _doOpenPostModal();
-      }, { reason: 'Sign in to list items on the student marketplace.' });
-      if (!allowed) return;
+    if (!window.UniAuth) {
+      alert('Authentication initializing. Please try again.');
+      return;
     }
-    _doOpenPostModal();
+    window.UniAuth.requireAuth(() => {
+      _doOpenPostModal();
+    }, { reason: 'Sign in to list items on the student marketplace.' });
   }
 
   function _doOpenPostModal() {
@@ -639,6 +647,14 @@
   // It does NOT appear on the public marketplace until the agent approves it!
   function handlePostItemSubmit(event) {
     event.preventDefault();
+    if (!window.UniAuth || !window.UniAuth.isAuthenticated()) {
+      if (window.UniAuth) {
+        window.UniAuth.requireAuth(() => {
+          handlePostItemSubmit(event);
+        }, { reason: 'Please sign in before submitting a listing.' });
+      }
+      return;
+    }
     const form = event.target;
 
     const title = form['item-title'].value.trim();
@@ -734,11 +750,17 @@
   // =========================================================================
 
   function openStatusTrackerModal() {
-    const modal = document.getElementById('status-tracker-modal');
-    if (modal) {
-      modal.classList.add('open');
-      document.body.style.overflow = 'hidden';
+    if (!window.UniAuth) {
+      alert('Authentication initializing. Please try again.');
+      return;
     }
+    window.UniAuth.requireAuth(() => {
+      const modal = document.getElementById('status-tracker-modal');
+      if (modal) {
+        modal.classList.add('open');
+        document.body.style.overflow = 'hidden';
+      }
+    }, { reason: 'Sign in to track your inquiry and deal status.' });
   }
 
   function closeStatusTrackerModal() {
@@ -751,6 +773,14 @@
 
   function checkInquiryStatus(event) {
     if (event) event.preventDefault();
+    if (!window.UniAuth || !window.UniAuth.isAuthenticated()) {
+      if (window.UniAuth) {
+        window.UniAuth.requireAuth(() => {
+          checkInquiryStatus();
+        }, { reason: 'Please sign in to look up your inquiry or verification ticket status.' });
+      }
+      return;
+    }
     const refInput = document.getElementById('tracker-ref-input');
     const resultBox = document.getElementById('tracker-result-box');
     if (!refInput || !resultBox) return;
@@ -848,15 +878,11 @@
   }
 
   // =========================================================================
-  // Verified Campus Agents Known by the System
+  // Verified Campus Agents Known by the System (Strictly Verified Emails Only)
   // =========================================================================
   const KNOWN_AGENTS = [
-    { id: 1, name: 'George Scourser', email: 'georgescourser@gmail.com', campus: 'KU', phone: '254742122668', isLead: true },
-    { id: 2, name: 'Odero Carilus', email: 'oderocarilus@gmail.com', campus: 'JKUAT', phone: '254116280954', isLead: true },
-    { id: 1, name: 'Sarah Jenkins', email: 'sarah@uninest.com', campus: 'KU', phone: '254711000111' },
-    { id: 2, name: 'David Kimani', email: 'david@uninest.com', campus: 'JKUAT', phone: '254722000222' },
-    { id: 3, name: 'Brian Omondi', email: 'brian@uninest.com', campus: 'UoN', phone: '254733000333' },
-    { id: 4, name: 'Aisha Mohamed', email: 'aisha@uninest.com', campus: 'Strathmore', phone: '254744000444' }
+    { id: 1, name: 'George Scourser', email: 'georgescourser@gmail.com', campus: 'KU / All Campuses', phone: '254742122668', isLead: true },
+    { id: 2, name: 'Odero Carilus', email: 'oderocarilus@gmail.com', campus: 'JKUAT / All Campuses', phone: '254116280954', isLead: true }
   ];
 
   let currentActiveAgent = null;
@@ -865,33 +891,9 @@
     if (!user || !user.email) return null;
     const cleanEmail = user.email.trim().toLowerCase();
 
-    // 1. Direct match in KNOWN_AGENTS
+    // Strictly allow ONLY the verified agent emails in KNOWN_AGENTS
     const direct = KNOWN_AGENTS.find(a => a.email.toLowerCase() === cleanEmail);
-    if (direct) return direct;
-
-    // 2. Check dynamic agents if loaded via Supabase or window.uniData
-    if (window.uniData && Array.isArray(window.uniData.agents)) {
-      const match = window.uniData.agents.find(a => a.email && a.email.toLowerCase() === cleanEmail);
-      if (match) return match;
-    }
-
-    // 3. Fallback admin emails
-    if (cleanEmail === 'georgescourser@gmail.com') {
-      return { id: 1, name: 'George Scourser', email: cleanEmail, campus: 'KU / All Campuses', isLead: true };
-    }
-    if (cleanEmail === 'oderocarilus@gmail.com') {
-      return { id: 2, name: 'Odero Carilus', email: cleanEmail, campus: 'JKUAT / All Campuses', isLead: true };
-    }
-
-    // 4. Simplified Email-Only Sign-In: Allow any signed-in email to access the Agent Portal
-    const fallbackName = user.user_metadata?.full_name || user.name || cleanEmail.split('@')[0] || 'Campus Agent';
-    return {
-      id: 1,
-      name: fallbackName,
-      email: cleanEmail,
-      campus: 'All Campuses',
-      isLead: true
-    };
+    return direct || null;
   }
 
   function getCurrentVerifiedAgent() {
@@ -902,9 +904,6 @@
 
   function isItemAssignedToAgent(item, agent) {
     if (!item || !agent) return false;
-
-    // Lead / Email-authenticated agents can manage all campus items
-    if (agent.isLead) return true;
 
     // Check by agentId or assignedAgentId
     if (item.agentId && (item.agentId === agent.id || item.agentId == agent.id)) return true;
@@ -917,6 +916,9 @@
       const firstName = cleanAgentName.split(' ')[0];
       if (cleanItemAgent.includes(firstName)) return true;
     }
+
+    // Lead agents (George & Odero) can manage their campus or fallback unassigned
+    if (agent.isLead && (!item.agentId && !item.assignedAgentId)) return true;
 
     return false;
   }
@@ -976,12 +978,10 @@
   function switchAgentAccount() {
     closeAgentAccessDeniedModal();
     if (window.UniAuth) {
-      window.UniAuth.signOut(false);
+      window.UniAuth.signOut();
       setTimeout(() => {
-        window.UniAuth.requireAuth(() => {
-          openAgentPortal();
-        }, { reason: 'Enter your email address to access the Agent Portal.' });
-      }, 100);
+        window.UniAuth.openAuthModal('signin');
+      }, 300);
     }
   }
 
@@ -1183,6 +1183,11 @@
 
   // AGENT ACTION: Verify & Approve -> Publishes the item to the public catalog
   function approveAndPublishSubmission(listingRef) {
+    const currentAgent = currentActiveAgent || getCurrentVerifiedAgent();
+    if (!currentAgent) {
+      alert('Unauthorized: Only verified agents can approve and publish submissions.');
+      return;
+    }
     let pending = [];
     try {
       const stored = localStorage.getItem(STORAGE_KEY_PENDING_SUBMISSIONS);
@@ -1240,6 +1245,11 @@
 
   // AGENT ACTION: Schedule on-site hostel inspection visit
   function scheduleInspectionVisit(listingRef) {
+    const currentAgent = currentActiveAgent || getCurrentVerifiedAgent();
+    if (!currentAgent) {
+      alert('Unauthorized: Only verified agents can schedule inspection visits.');
+      return;
+    }
     const slot = prompt(`Enter scheduled date & time for on-site inspection visit (e.g. Tomorrow at 3:00 PM):`);
     if (!slot || !slot.trim()) return;
 
@@ -1248,6 +1258,11 @@
 
   // AGENT ACTION: Reject submission
   function rejectSubmission(listingRef) {
+    const currentAgent = currentActiveAgent || getCurrentVerifiedAgent();
+    if (!currentAgent) {
+      alert('Unauthorized: Only verified agents can reject submissions.');
+      return;
+    }
     if (!confirm(`Are you sure you want to reject submission ${listingRef}? The seller will be notified to correct defects.`)) return;
 
     let pending = [];
@@ -1266,6 +1281,11 @@
   }
 
   function updateInquiryByAgent(refCode, newStatus) {
+    const currentAgent = currentActiveAgent || getCurrentVerifiedAgent();
+    if (!currentAgent) {
+      alert('Unauthorized: Only verified agents can update buyer inquiries.');
+      return;
+    }
     try {
       const stored = localStorage.getItem(STORAGE_KEY_INQUIRIES);
       if (!stored) return;
@@ -1401,6 +1421,11 @@
   }
 
   function promptDealUpdate(refCode) {
+    const currentAgent = currentActiveAgent || getCurrentVerifiedAgent();
+    if (!currentAgent) {
+      alert('Unauthorized: Only verified agents can dispatch deal updates.');
+      return;
+    }
     const msg = prompt(`Enter deal update message for client (${refCode}) - Private seller contacts will remain hidden:`);
     if (!msg || !msg.trim()) return;
 

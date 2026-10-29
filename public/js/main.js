@@ -38,16 +38,16 @@ window.toggleFav = function(event, el) {
     event.preventDefault();
     event.stopPropagation();
   }
-  if (window.UniAuth) {
-    window.UniAuth.requireAuth(() => {
-      el.classList.toggle('active');
-      if (window.UniAuth.showToast) {
-        window.UniAuth.showToast(el.classList.contains('active') ? 'Saved to your favorites!' : 'Removed from favorites.', 'success');
-      }
-    }, { reason: 'Sign in or create an account to save properties to your favorites.' });
-  } else {
-    el.classList.toggle('active');
+  if (!window.UniAuth) {
+    alert('Please sign in to save properties to your favorites.');
+    return;
   }
+  window.UniAuth.requireAuth(() => {
+    el.classList.toggle('active');
+    if (window.UniAuth.showToast) {
+      window.UniAuth.showToast(el.classList.contains('active') ? 'Saved to your favorites!' : 'Removed from favorites.', 'success');
+    }
+  }, { reason: 'Sign in or create an account to save properties to your favorites.' });
 };
 
 // Skeleton Generators
@@ -333,26 +333,22 @@ function initPropertyPage() {
 
 // Global Property Viewing Modal Handlers with Auth Gatekeeper
 window.openPropertyViewingModal = function() {
-  if (window.UniAuth) {
-    window.UniAuth.requireAuth(() => {
-      const modal = document.getElementById('property-viewing-modal');
-      if (modal) {
-        const user = window.UniAuth.getUser();
-        if (user && user.email) {
-          const emailInput = document.getElementById('prop-viewing-email');
-          if (emailInput && !emailInput.value) emailInput.value = user.email;
-        }
-        modal.classList.add('open');
-        document.body.style.overflow = 'hidden';
-      }
-    }, { reason: 'Sign in to schedule an accompanied property viewing with an authorized campus agent.' });
-  } else {
+  if (!window.UniAuth) {
+    alert('Please sign in to schedule an accompanied property viewing.');
+    return;
+  }
+  window.UniAuth.requireAuth(() => {
     const modal = document.getElementById('property-viewing-modal');
     if (modal) {
+      const user = window.UniAuth.getUser();
+      if (user && user.email) {
+        const emailInput = document.getElementById('prop-viewing-email');
+        if (emailInput && !emailInput.value) emailInput.value = user.email;
+      }
       modal.classList.add('open');
       document.body.style.overflow = 'hidden';
     }
-  }
+  }, { reason: 'Sign in to schedule an accompanied property viewing with an authorized campus agent.' });
 };
 
 window.closePropertyViewingModal = function() {

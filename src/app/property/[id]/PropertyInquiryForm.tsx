@@ -21,7 +21,7 @@ export default function PropertyInquiryForm({
     {} as InquiryState
   )
 
-  const { user: authUser } = useAuth()
+  const { user: authUser, requireAuth } = useAuth()
   const [currentUser, setCurrentUser] = useState<any>(user || authUser)
 
   useEffect(() => {
@@ -33,6 +33,13 @@ export default function PropertyInquiryForm({
       }).catch(() => {})
     }
   }, [authUser, currentUser])
+
+  const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    if (!currentUser && !authUser) {
+      e.preventDefault()
+      await requireAuth(() => {}, `/property/${propertyId}`)
+    }
+  }
 
 
 
@@ -67,7 +74,7 @@ export default function PropertyInquiryForm({
       )}
 
       {!state?.success && (
-        <form action={formAction} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+        <form action={formAction} onSubmit={handleFormSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
           <input type="hidden" name="propertyId" value={propertyId} />
 
           <div>

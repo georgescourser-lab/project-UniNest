@@ -21,7 +21,7 @@ function getResendApiKey(): string {
 }
 
 function signChallenge(email: string, code: string, expiresAt: number): string {
-  const secret = getResendApiKey();
+  const secret = getResendApiKey() || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'uninest-otp-secret';
   const data = `${email.toLowerCase()}:${code}:${expiresAt}`;
   const hmac = crypto.createHmac('sha256', secret).update(data).digest('hex');
   return `${expiresAt}.${hmac}`;

@@ -13,6 +13,11 @@ export type InquiryState = {
 
 // Submits viewing/inspection inquiry - Visible to authorized agents only
 export async function submitPropertyInquiry(prevState: InquiryState | null, formData: FormData): Promise<InquiryState> {
+  const user = await getCurrentUser()
+  if (!user) {
+    return { error: 'Please sign in first to schedule an accompanied property viewing.', success: false }
+  }
+
   const propertyId = parseInt(formData.get('propertyId') as string)
   const clientName = formData.get('clientName') as string
   const clientPhone = formData.get('clientPhone') as string
@@ -30,7 +35,6 @@ export async function submitPropertyInquiry(prevState: InquiryState | null, form
 
   try {
     const supabase = await createClient()
-    const user = await getCurrentUser()
 
     // Retrieve assigned agent
     const { data: prop } = await supabase
@@ -86,20 +90,13 @@ export async function getAgentInquiries() {
     throw new Error('Unauthorized: Authentication required to view agent requests.')
   }
 
-  const adminEmails = process.env.ADMIN_EMAILS?.split(',') || []
-  const isAdmin = adminEmails.includes(user.email || '')
+  const verifiedAgentEmails = ['georgescourser@gmail.com', 'oderocarilus@gmail.com']
+  const cleanEmail = (user.email || '').trim().toLowerCase()
+  const isVerifiedAgent = verifiedAgentEmails.includes(cleanEmail)
 
-  // Verify agent or admin role
-  if (!isAdmin) {
-    const { data: agentProfile } = await supabase
-      .from('agents')
-      .select('id, email')
-      .eq('email', user.email)
-      .single()
-
-    if (!agentProfile) {
-      throw new Error('Unauthorized: You must be an authorized agent to access client inquiries.')
-    }
+  // Strictly restrict agent inquiry access to verified agent emails only
+  if (!isVerifiedAgent) {
+    throw new Error('Unauthorized: Only verified agents can access client inquiries.')
   }
 
   const { data: inquiries, error } = await supabase
