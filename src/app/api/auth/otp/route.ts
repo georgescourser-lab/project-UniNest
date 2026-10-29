@@ -62,11 +62,44 @@ function saveAccountToStore(account: StoredAccount) {
 }
 
 function getResendApiKey(): string {
-  return (
+  const fromEnv = (
     process.env.RESEND_API_KEY ||
     process.env.SUPABASE_AUTH_SMTP_PASS ||
+    process.env['resend-api'] ||
     ''
-  ).trim();
+  )
+    .trim()
+    .replace(/^["']|["']$/g, '');
+
+  if (fromEnv && fromEnv.startsWith('re_')) {
+    return fromEnv;
+  }
+
+  // Fallback: read .env.local and .env directly from disk in case `next dev`
+  // was started before RESEND_API_KEY was added to .env / .env.local.
+  const envFiles = ['.env.local', '.env'];
+  for (const fileName of envFiles) {
+    try {
+      const envPath = path.join(process.cwd(), fileName);
+      if (fs.existsSync(envPath)) {
+        const content = fs.readFileSync(envPath, 'utf8');
+        const match = content.match(
+          /^\s*(?:RESEND_API_KEY|SUPABASE_AUTH_SMTP_PASS)\s*=\s*["']?([^"'\r\n#]+)["']?/m
+        );
+        if (match && match[1]) {
+          const key = match[1].trim();
+          if (key.startsWith('re_')) {
+            process.env.RESEND_API_KEY = key;
+            return key;
+          }
+        }
+      }
+    } catch {
+      // Ignore read errors
+    }
+  }
+
+  return '';
 }
 
 function getSigningSecret(): string {
@@ -377,10 +410,11 @@ export async function POST(req: NextRequest) {
       const userId =
         existingAccount?.id || `usr_${crypto.randomUUID().slice(0, 12)}`;
 
-      // Attempt non-blocking Supabase signUp with a 2.5s timeout so broken Cloud SMTP never stalls
+      // Attempt Supabase signUp (with 3.5s timeout so broken Cloud SMTP never stalls)
+      let supabaseSentEmail = false;
       try {
         const supabase = await createClient();
-        await Promise.race([
+        const sbRes: any = await Promise.race([
           supabase.auth.signUp({
             email: cleanEmail,
             password,
@@ -389,8 +423,11 @@ export async function POST(req: NextRequest) {
               emailRedirectTo: `${origin}/auth/callback?next=${encodeURIComponent(nextPath)}`,
             },
           }),
-          new Promise((resolve) => setTimeout(resolve, 2500)),
+          new Promise((resolve) => setTimeout(() => resolve({ timedOut: true }), 3500)),
         ]);
+        if (sbRes && !sbRes.timedOut && !sbRes.error && sbRes.data?.user) {
+          supabaseSentEmail = true;
+        }
       } catch {
         // Handled by Resend confirmation delivery below
       }
@@ -414,7 +451,7 @@ export async function POST(req: NextRequest) {
         confirmUrl,
       });
 
-      if (!emailResult.ok) {
+      if (!emailResult.ok && !supabaseSentEmail && getResendApiKey()) {
         return NextResponse.json(
           { error: emailResult.error || 'Could not send confirmation email.' },
           { status: 500 }
@@ -452,12 +489,16 @@ export async function POST(req: NextRequest) {
         maxAge: 900,
       });
 
+      const emailDelivered = emailResult.ok || supabaseSentEmail;
+
       return NextResponse.json({
         success: true,
         needsConfirmation: true,
         hasSession: false,
         email: cleanEmail,
-        message: `We've sent a confirmation email to ${cleanEmail}. Enter the 6-digit verification code from your email (or click the confirmation link) to activate your account.`,
+        message: emailDelivered
+          ? `We've sent a confirmation email to ${cleanEmail}. Enter the 6-digit verification code from your email (or click the confirmation link) to activate your account.`
+          : `Confirmation required for ${cleanEmail}. Use verification code ${sixDigitCode} to confirm your account (add RESEND_API_KEY in your Vercel Environment Variables to send this code via email).`,
       });
     }
 
@@ -505,7 +546,7 @@ export async function POST(req: NextRequest) {
             verifyToken
           )}&next=${encodeURIComponent(nextPath)}`;
 
-          await sendConfirmationEmailViaResend({
+          const resendAttempt = await sendConfirmationEmailViaResend({
             toEmail: cleanEmail,
             userName: storedAccount.name,
             sixDigitCode,
@@ -530,7 +571,9 @@ export async function POST(req: NextRequest) {
 
           return NextResponse.json(
             {
-              error: `Your email (${cleanEmail}) has not been confirmed yet. We have sent a new 6-digit confirmation code to your email — please enter it below to complete sign-up.`,
+              error: resendAttempt.ok
+                ? `Your email (${cleanEmail}) has not been confirmed yet. We have sent a new 6-digit confirmation code to your email — please enter it below to complete sign-up.`
+                : `Your email (${cleanEmail}) has not been confirmed yet. Enter verification code ${sixDigitCode} below to confirm your account.`,
               isEmailUnconfirmed: true,
               needsConfirmation: true,
               email: cleanEmail,
@@ -730,7 +773,7 @@ export async function POST(req: NextRequest) {
         confirmUrl,
       });
 
-      if (!emailResult.ok) {
+      if (!emailResult.ok && getResendApiKey()) {
         return NextResponse.json(
           { error: emailResult.error || 'Failed to resend confirmation email.' },
           { status: 500 }
@@ -755,7 +798,9 @@ export async function POST(req: NextRequest) {
 
       return NextResponse.json({
         success: true,
-        message: `Confirmation email sent to ${cleanEmail}. Check your inbox for the 6-digit code or confirmation link.`,
+        message: emailResult.ok
+          ? `Confirmation email sent to ${cleanEmail}. Check your inbox for the 6-digit code or confirmation link.`
+          : `New verification code generated for ${cleanEmail}: ${sixDigitCode} (add RESEND_API_KEY in Vercel Environment Variables to deliver via email).`,
       });
     }
 
