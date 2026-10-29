@@ -1,5 +1,5 @@
-// UniNest Simplified Email-Only Authentication System
-// Allows instant sign-in with just an email address for both the Agent Portal and all client actions.
+// UniNest One-Click Google Authentication System
+// Streamlined to Sign in with Google only (no email/password forms).
 
 (function() {
   'use strict';
@@ -17,10 +17,10 @@
         const stored = localStorage.getItem('uninest_user');
         if (stored) {
           const parsed = JSON.parse(stored);
-          if (parsed && parsed.email) {
-            const name = parsed.name || parsed.email.split('@')[0];
+          if (parsed && (parsed.id || parsed.email)) {
+            const name = parsed.name || (parsed.email ? parsed.email.split('@')[0] : 'Student');
             return {
-              id: parsed.id || 'user_' + parsed.email.replace(/[^a-z0-9]/gi, '_'),
+              id: parsed.id,
               email: parsed.email,
               name: name,
               user_metadata: { full_name: name, display_name: name }
@@ -36,10 +36,10 @@
           const [key, val] = pair.trim().split('=');
           if ((key === 'uninest_user_client' || key === 'uninest_user_session') && val) {
             const parsed = JSON.parse(decodeURIComponent(val));
-            if (parsed && parsed.email) {
-              const name = parsed.name || parsed.email.split('@')[0];
+            if (parsed && (parsed.id || parsed.email)) {
+              const name = parsed.name || (parsed.email ? parsed.email.split('@')[0] : 'Student');
               return {
-                id: parsed.id || 'user_' + parsed.email.replace(/[^a-z0-9]/gi, '_'),
+                id: parsed.id,
                 email: parsed.email,
                 name: name,
                 user_metadata: { full_name: name, display_name: name }
@@ -53,25 +53,14 @@
     },
 
     saveClientSession(user) {
-      if (!user || !user.email) return;
-      const cleanEmail = user.email.trim().toLowerCase();
-      const name = user.user_metadata?.full_name || user.name || cleanEmail.split('@')[0] || 'User';
-      const id = user.id || ('user_' + cleanEmail.replace(/[^a-z0-9]/g, '_'));
-
-      this._user = {
-        id,
-        email: cleanEmail,
-        name,
-        user_metadata: { full_name: name, display_name: name }
-      };
-
+      if (!user) return;
+      this._user = user;
       const payload = {
-        id,
-        email: cleanEmail,
-        name,
+        id: user.id || `user_${Date.now()}`,
+        email: user.email || '',
+        name: user.user_metadata?.full_name || user.name || (user.email ? user.email.split('@')[0] : 'Student'),
         createdAt: Date.now()
       };
-
       try {
         localStorage.setItem('uninest_user', JSON.stringify(payload));
         const encoded = encodeURIComponent(JSON.stringify(payload));
@@ -94,7 +83,6 @@
       return !!this._user;
     },
 
-    // Execute callback if signed in; otherwise open the simple email sign-in modal
     requireAuth(actionCallback, options = {}) {
       if (this.isAuthenticated()) {
         if (typeof actionCallback === 'function') {
@@ -104,7 +92,7 @@
       }
 
       this._pendingAction = typeof actionCallback === 'function' ? actionCallback : null;
-      const reason = options.reason || 'Enter your email address to continue.';
+      const reason = options.reason || 'Sign in with Google to continue.';
       this.openAuthModal(options.mode || 'signin', reason);
       return false;
     },
@@ -118,18 +106,13 @@
       const reasonEl = document.getElementById('uni-auth-modal-reason');
       if (reasonEl) {
         reasonEl.textContent =
-          reason || 'Enter your email address below to access client features or the Agent Portal.';
+          reason || 'Continue with your Google account to save properties, book viewings, list items, or access the Agent Portal.';
         reasonEl.style.display = 'block';
       }
 
       this.clearMessages();
       modal.classList.add('open');
       document.body.style.overflow = 'hidden';
-
-      setTimeout(() => {
-        const emailInput = document.getElementById('uni-auth-email');
-        if (emailInput) emailInput.focus();
-      }, 80);
     },
 
     closeAuthModal() {
@@ -156,7 +139,7 @@
 
     showError(msg) {
       const errBox = document.getElementById('uni-auth-error-box');
-      const text = typeof msg === 'string' ? msg : (msg?.message || 'Please enter a valid email address.');
+      const text = typeof msg === 'string' ? msg : (msg?.message || 'Google sign-in failed.');
       if (errBox) {
         errBox.textContent = text;
         errBox.style.display = 'block';
@@ -165,26 +148,35 @@
       }
     },
 
-    handleFormSubmit(e) {
-      if (e) e.preventDefault();
-      const emailInput = document.getElementById('uni-auth-email');
-      const rawEmail = emailInput ? emailInput.value.trim().toLowerCase() : '';
+    async signInWithGoogle() {
+      const btn = document.getElementById('uni-auth-google-btn');
+      if (btn) btn.disabled = true;
+      this.clearMessages();
 
-      if (!rawEmail || !rawEmail.includes('@')) {
-        this.showError('Please enter a valid email address.');
-        return;
+      try {
+        if (!window.supabaseClient) {
+          throw new Error('Authentication service not initialized.');
+        }
+
+        const returnUrl = window.location.href;
+        const { data, error } = await window.supabaseClient.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: returnUrl
+          }
+        });
+
+        if (error) throw error;
+
+        if (data?.url) {
+          window.location.href = data.url;
+        }
+      } catch (err) {
+        console.error('Google Auth error:', err);
+        this.showError(err.message || 'Google authentication failed.');
+      } finally {
+        if (btn) btn.disabled = false;
       }
-
-      const name = rawEmail.split('@')[0];
-      const user = {
-        id: 'user_' + rawEmail.replace(/[^a-z0-9]/g, '_'),
-        email: rawEmail,
-        name: name,
-        user_metadata: { full_name: name, display_name: name }
-      };
-
-      this._user = user;
-      this.onAuthSuccess(`Signed in as ${rawEmail}`);
     },
 
     onAuthSuccess(message = 'Signed in successfully!') {
@@ -202,7 +194,7 @@
           } catch (e) {
             console.error('Error resuming action:', e);
           }
-        }, 120);
+        }, 200);
       }
     },
 
@@ -218,7 +210,7 @@
       this._user = null;
       this.renderNavActions();
       if (reloadPage) {
-        this.showToast('You have been signed out.', 'info');
+        this.showToast('You have been logged out.', 'info');
         window.location.reload();
       }
     },
@@ -242,7 +234,7 @@
         toast.style.opacity = '0';
         toast.style.transform = 'translateY(-10px)';
         setTimeout(() => toast.remove(), 300);
-      }, 3500);
+      }, 4000);
     },
 
     renderNavActions() {
@@ -275,7 +267,7 @@
             html = `
               <button type="button" class="btn btn-secondary" onclick="UniMarketplace.openPostModal()" style="margin-right: 0.25rem; font-size: 0.85rem; padding: 0.45rem 0.85rem;">+ List Item</button>
               <button type="button" class="btn btn-secondary" onclick="UniMarketplace.openAgentPortal()" style="font-size: 0.85rem; padding: 0.45rem 0.85rem; margin-right: 0.35rem;">Agent Portal</button>
-              <button type="button" class="btn btn-primary" onclick="UniAuth.openAuthModal('signin')" style="padding: 0.45rem 0.95rem; font-size: 0.85rem; font-weight: 600;">Sign In with Email</button>
+              <button type="button" class="btn btn-primary" onclick="UniAuth.openAuthModal('signin')" style="padding: 0.45rem 0.95rem; font-size: 0.85rem; font-weight: 600;">Continue with Google</button>
             `;
           }
         } else {
@@ -292,7 +284,7 @@
           } else {
             html = `
               <a href="marketplace.html#sell" class="btn btn-secondary" style="margin-right: 0.25rem; font-size: 0.85rem; padding: 0.45rem 0.85rem;">+ Sell Item</a>
-              <button type="button" class="btn btn-primary" onclick="UniAuth.openAuthModal('signin')" style="font-size: 0.85rem; padding: 0.45rem 0.95rem; font-weight: 600;">Sign In with Email</button>
+              <button type="button" class="btn btn-primary" onclick="UniAuth.openAuthModal('signin')" style="font-size: 0.85rem; padding: 0.45rem 0.95rem; font-weight: 600;">Continue with Google</button>
             `;
           }
         }
@@ -313,32 +305,31 @@
     modalDiv.innerHTML = `
       <div class="uni-modal-dialog uni-auth-dialog" style="max-width: 410px; width: 100%; border-radius: 18px; padding: 0; box-shadow: 0 20px 40px rgba(0,0,0,0.2); background: #ffffff; margin: auto; display: flex; flex-direction: column; overflow: hidden;">
         
-        <div style="padding: 1.25rem 1.4rem 0.9rem 1.4rem; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: flex-start;">
+        <div style="padding: 1.35rem 1.4rem 0.95rem 1.4rem; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: flex-start;">
           <div>
-            <div style="font-size: 0.72rem; font-weight: 700; color: #2563eb; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.2rem;">QUICK EMAIL ACCESS</div>
-            <h3 style="margin: 0; font-size: 1.25rem; color: #0f172a; font-weight: 700; letter-spacing: -0.01em;">Sign in with your Email</h3>
-            <p id="uni-auth-modal-reason" style="margin: 0.3rem 0 0 0; font-size: 0.82rem; color: #64748b; line-height: 1.4;">Enter your email address below to access client features or the Agent Portal.</p>
+            <div style="font-size: 0.72rem; font-weight: 700; color: #2563eb; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.2rem;">WELCOME TO UNINEST</div>
+            <h3 style="margin: 0; font-size: 1.3rem; color: #0f172a; font-weight: 700; letter-spacing: -0.01em;">Sign in with Google</h3>
+            <p id="uni-auth-modal-reason" style="margin: 0.3rem 0 0 0; font-size: 0.84rem; color: #64748b; line-height: 1.45;">Continue with your Google account to save properties, book viewings, list items, or access the Agent Portal.</p>
           </div>
           <button type="button" class="uni-modal-close-btn" onclick="UniAuth.closeAuthModal()" style="margin-left: 1rem; flex-shrink: 0;" aria-label="Close modal">&times;</button>
         </div>
 
-        <div style="padding: 1.15rem 1.4rem 1.35rem 1.4rem;">
-          <div id="uni-auth-error-box" style="display: none; background: #fee2e2; border: 1px solid #fca5a5; color: #991b1b; padding: 0.6rem 0.85rem; border-radius: 8px; font-size: 0.82rem; margin-bottom: 0.85rem;"></div>
+        <div style="padding: 1.35rem 1.4rem;">
+          <div id="uni-auth-error-box" style="display: none; background: #fee2e2; border: 1px solid #fca5a5; color: #991b1b; padding: 0.6rem 0.85rem; border-radius: 8px; font-size: 0.82rem; margin-bottom: 0.9rem;"></div>
 
-          <form onsubmit="UniAuth.handleFormSubmit(event)" style="display: flex; flex-direction: column; gap: 0.85rem; width: 100%;">
-            <div class="form-group" style="margin: 0; width: 100%; display: flex; flex-direction: column;">
-              <label for="uni-auth-email" class="form-label" style="font-size: 0.84rem; font-weight: 600; color: #1e293b; margin-bottom: 0.35rem; display: block;">Email Address</label>
-              <input type="email" id="uni-auth-email" class="form-input" placeholder="you@example.com or agent@uni-nest.app" required style="width: 100%; box-sizing: border-box; padding: 0.7rem 0.9rem; border: 1.5px solid #cbd5e1; border-radius: 10px; font-size: 0.92rem; background: #ffffff; color: #0f172a; outline: none;" />
-            </div>
-
-            <button type="submit" id="uni-auth-submit-btn" class="btn btn-primary" style="width: 100%; height: 42px; padding: 0.6rem 1.25rem; font-weight: 700; border-radius: 10px; font-size: 0.92rem; background: #2563eb; color: #ffffff; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25);">
-              Continue with Email
-            </button>
-          </form>
+          <button type="button" id="uni-auth-google-btn" onclick="UniAuth.signInWithGoogle()" style="width: 100%; height: 46px; display: flex; align-items: center; justify-content: center; gap: 0.75rem; background: #ffffff; border: 1.5px solid #cbd5e1; color: #0f172a; padding: 0.55rem 1rem; border-radius: 12px; font-weight: 700; font-size: 0.95rem; box-shadow: 0 2px 6px rgba(0,0,0,0.05); cursor: pointer; transition: all 0.2s ease;">
+            <svg width="20" height="20" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+            </svg>
+            Continue with Google
+          </button>
         </div>
 
         <div style="background: #f8fafc; padding: 0.7rem 1.25rem; border-top: 1px solid #f1f5f9; text-align: center; font-size: 0.74rem; color: #64748b;">
-          🔒 Instant email sign-in for students &amp; verified UniNest agents.
+          🔒 One-click Google authentication powered by Supabase.
         </div>
       </div>
     `;
@@ -358,12 +349,60 @@
     });
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  document.addEventListener('DOMContentLoaded', async () => {
     ensureAuthModalInDom();
+
     const storedUser = UniAuth.getStoredUser();
     if (storedUser) {
       UniAuth._user = storedUser;
     }
+
+    // Extract OAuth tokens if redirected back with URL hash (#access_token=...)
+    if (window.location.hash && window.location.hash.includes('access_token')) {
+      try {
+        const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+        const accessToken = hashParams.get('access_token');
+        const refreshToken = hashParams.get('refresh_token');
+        if (accessToken && refreshToken && window.supabaseClient) {
+          const { data, error } = await window.supabaseClient.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken
+          });
+          if (!error && data?.user) {
+            UniAuth._user = data.user;
+            UniAuth.saveClientSession(data.user);
+            UniAuth.showToast('✓ Signed in with Google!', 'success');
+            if (window.history && window.history.replaceState) {
+              window.history.replaceState(null, '', window.location.pathname + window.location.search);
+            }
+          }
+        }
+      } catch (hashErr) {
+        console.warn('OAuth token extraction error:', hashErr);
+      }
+    }
+
+    // Check existing Supabase session & listen for Google OAuth state changes
+    try {
+      if (window.supabaseClient && window.supabaseClient.auth) {
+        const { data } = await window.supabaseClient.auth.getSession();
+        if (data?.session?.user) {
+          UniAuth._user = data.session.user;
+          UniAuth.saveClientSession(UniAuth._user);
+        }
+
+        window.supabaseClient.auth.onAuthStateChange((_event, session) => {
+          if (session?.user) {
+            UniAuth._user = session.user;
+            UniAuth.saveClientSession(session.user);
+          }
+          UniAuth.renderNavActions();
+        });
+      }
+    } catch (e) {
+      console.warn('Supabase session initialization notice:', e);
+    }
+
     UniAuth.renderNavActions();
   });
 })();
