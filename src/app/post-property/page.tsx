@@ -1,31 +1,93 @@
 "use client";
 
 import { useActionState, useEffect, useState } from 'react';
-import { addProperty, getAgents } from '@/app/actions/propertyActions';
+import { addProperty, getAgents, verifyAgentAccess } from '@/app/actions/propertyActions';
 import { getCurrentUser } from '@/app/actions/authActions';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
+const FALLBACK_VERIFIED_EMAILS = ['georgescourser@gmail.com', 'oderocarilus@gmail.com'];
+
 export default function PostPropertyPage() {
   const [state, formAction, pending] = useActionState(addProperty, null);
   const [agents, setAgents] = useState<any[]>([]);
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, logout } = useAuth();
   const router = useRouter();
+
+  const [checkingAccess, setCheckingAccess] = useState(true);
+  const [verifiedAgent, setVerifiedAgent] = useState<any | null>(null);
+  const [activeEmail, setActiveEmail] = useState<string | null>(null);
 
   const [previewFiles, setPreviewFiles] = useState<string[]>([]);
   const [imageUrlInput, setImageUrlInput] = useState('');
 
   useEffect(() => {
-    if (!isLoading && !user) {
-      getCurrentUser().then((serverUser) => {
-        if (!serverUser) {
-          router.replace('/login?next=/post-property');
+    let cancelled = false;
+
+    async function checkAgentStatus() {
+      try {
+        const [agentsData, serverUser] = await Promise.all([
+          getAgents().catch(() => []),
+          getCurrentUser().catch(() => null),
+        ]);
+
+        if (cancelled) return;
+        setAgents(agentsData);
+
+        const resolvedEmail = (user?.email || serverUser?.email || '').trim().toLowerCase();
+        if (!resolvedEmail) {
+          if (!isLoading) {
+            router.replace('/login?next=/post-property');
+          }
+          return;
         }
-      }).catch(() => {
-        router.replace('/login?next=/post-property');
-      });
+
+        setActiveEmail(resolvedEmail);
+
+        const access = await verifyAgentAccess(resolvedEmail).catch(() => ({
+          isVerified: FALLBACK_VERIFIED_EMAILS.includes(resolvedEmail),
+          agent: null,
+        }));
+
+        if (cancelled) return;
+
+        if (access.isVerified) {
+          setVerifiedAgent(
+            access.agent || {
+              name: resolvedEmail.split('@')[0],
+              email: resolvedEmail,
+            }
+          );
+        } else {
+          const matchedFromList = agentsData.find(
+            (a: any) => a.email && a.email.trim().toLowerCase() === resolvedEmail
+          );
+          if (matchedFromList || FALLBACK_VERIFIED_EMAILS.includes(resolvedEmail)) {
+            setVerifiedAgent(
+              matchedFromList || {
+                name: resolvedEmail.split('@')[0],
+                email: resolvedEmail,
+              }
+            );
+          } else {
+            setVerifiedAgent(null);
+          }
+        }
+      } finally {
+        if (!cancelled) {
+          setCheckingAccess(false);
+        }
+      }
     }
+
+    if (!isLoading) {
+      checkAgentStatus();
+    }
+
+    return () => {
+      cancelled = true;
+    };
   }, [isLoading, user, router]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -46,16 +108,129 @@ export default function PostPropertyPage() {
     .map(u => u.trim())
     .filter(u => u.startsWith('http://') || u.startsWith('https://'));
 
-  useEffect(() => {
-    getAgents().then(setAgents).catch(console.error);
-  }, []);
+  if (isLoading || checkingAccess) {
+    return (
+      <main className="post-property-page container" style={{ paddingTop: '8rem', textAlign: 'center' }}>
+        <p style={{ color: '#64748b' }}>Verifying agent authorization...</p>
+      </main>
+    );
+  }
+
+  if (!verifiedAgent) {
+    return (
+      <main className="post-property-page container" style={{ paddingTop: '7rem', paddingBottom: '4rem' }}>
+        <div
+          style={{
+            maxWidth: '520px',
+            margin: '0 auto',
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '1rem',
+            padding: '2.5rem',
+            textAlign: 'center',
+            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.08)',
+          }}
+        >
+          <div
+            style={{
+              width: '60px',
+              height: '60px',
+              borderRadius: '50%',
+              background: '#fef2f2',
+              color: '#dc2626',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 1.25rem',
+            }}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="30"
+              height="30"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+          </div>
+          <h1 style={{ fontSize: '1.6rem', fontWeight: 700, color: '#0f172a', marginBottom: '0.5rem' }}>
+            Verified Agents Only
+          </h1>
+          <p style={{ color: '#64748b', fontSize: '0.95rem', lineHeight: 1.6, marginBottom: '1.25rem' }}>
+            Only verified UniNest campus agents are authorized to post vacant houses.
+          </p>
+          {activeEmail && (
+            <div
+              style={{
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: '10px',
+                padding: '0.75rem 1rem',
+                fontSize: '0.88rem',
+                color: '#334155',
+                marginBottom: '1.5rem',
+              }}
+            >
+              Signed in as: <strong>{activeEmail}</strong>
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <Link href="/search" className="btn btn-secondary">
+              &larr; Back to Properties
+            </Link>
+            <button
+              type="button"
+              onClick={async () => {
+                await logout();
+                router.push('/login?next=/post-property');
+              }}
+              className="btn btn-primary"
+            >
+              Switch to Agent Account
+            </button>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="post-property-page container">
       <div className="form-container">
+        <div
+          style={{
+            background: '#f0fdf4',
+            border: '1px solid #bbf7d0',
+            borderRadius: '10px',
+            padding: '0.75rem 1rem',
+            marginBottom: '1.5rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '0.5rem',
+            fontSize: '0.88rem',
+            color: '#166534',
+          }}
+        >
+          <span>
+            ✓ <strong>Verified Agent Portal:</strong> Signed in as{' '}
+            <strong>{verifiedAgent.name || activeEmail}</strong> ({activeEmail})
+          </span>
+          <Link href="/search" style={{ color: '#15803d', fontWeight: 600, textDecoration: 'underline' }}>
+            &larr; Back to Properties
+          </Link>
+        </div>
+
         <div className="form-header">
-          <h1>List Your Property</h1>
-          <p>Fill out the details below to reach thousands of students instantly.</p>
+          <h1>Post a Vacant House</h1>
+          <p>Fill out the details below to list a verified vacant house for students.</p>
         </div>
 
         <form action={formAction} className="post-form">
@@ -73,9 +248,9 @@ export default function PostPropertyPage() {
             </label>
 
             <label className="form-field">
-              <span>Assign Agent</span>
-              <select name="agent_id">
-                <option value="">No Agent Assigned</option>
+              <span>Assign Verified Agent</span>
+              <select name="agent_id" defaultValue={verifiedAgent?.id ? String(verifiedAgent.id) : ''}>
+                <option value="">Select Agent...</option>
                 {agents.map(agent => (
                   <option key={agent.id} value={agent.id}>{agent.name} (WhatsApp: {agent.whatsapp})</option>
                 ))}
@@ -244,14 +419,14 @@ export default function PostPropertyPage() {
 
           {state?.success ? (
             <div className="form-success">
-              <p>Property listed successfully!</p>
-              <Link href="/search" className="btn btn-primary">View Listings</Link>
+              <p>House posted successfully!</p>
+              <Link href="/search" className="btn btn-primary">View Properties</Link>
             </div>
           ) : (
             <div className="form-actions">
-              <Link href="/" className="btn btn-secondary">Cancel</Link>
+              <Link href="/search" className="btn btn-secondary">Cancel</Link>
               <button type="submit" className="btn btn-primary" disabled={pending}>
-                {pending ? 'Posting...' : 'Post Property'}
+                {pending ? 'Posting...' : 'Post House'}
               </button>
             </div>
           )}

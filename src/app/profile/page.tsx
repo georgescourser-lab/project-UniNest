@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { getCurrentUser, logout } from '@/app/actions/authActions';
 import { getFavorites } from '@/app/actions/favoriteActions';
+import { verifyAgentAccess } from '@/app/actions/propertyActions';
 import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
@@ -14,7 +15,10 @@ export default async function ProfilePage() {
 
   const email = user.email || '';
   const displayName = user.user_metadata?.full_name || email.split('@')[0] || 'Student';
-  const favorites = await getFavorites();
+  const [favorites, { isVerified: isVerifiedAgent }] = await Promise.all([
+    getFavorites(),
+    verifyAgentAccess(email),
+  ]);
 
   return (
     <div className="container" style={{ paddingTop: '100px', paddingBottom: '4rem', maxWidth: '800px', margin: '0 auto' }}>
@@ -58,13 +62,15 @@ export default async function ProfilePage() {
             </a>
           </div>
 
-          <div style={{ background: '#f8fafc', padding: '1.25rem', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-            <span style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 500 }}>Host & Agents</span>
-            <div style={{ fontSize: '1.1rem', fontWeight: 600, color: '#0f172a', marginTop: '0.5rem' }}>List Space</div>
-            <Link href="/post-property" style={{ fontSize: '0.875rem', color: '#2563eb', fontWeight: 600, display: 'inline-block', marginTop: '0.5rem' }}>
-              Post Property &rarr;
-            </Link>
-          </div>
+          {isVerifiedAgent && (
+            <div style={{ background: '#f8fafc', padding: '1.25rem', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+              <span style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 500 }}>Verified Agent</span>
+              <div style={{ fontSize: '1.1rem', fontWeight: 600, color: '#0f172a', marginTop: '0.5rem' }}>Vacant Houses</div>
+              <Link href="/post-property" style={{ fontSize: '0.875rem', color: '#2563eb', fontWeight: 600, display: 'inline-block', marginTop: '0.5rem' }}>
+                + Post House &rarr;
+              </Link>
+            </div>
+          )}
         </div>
 
         <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

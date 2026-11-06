@@ -4,6 +4,40 @@ import { createClient } from '@/utils/supabase/server'
 import { getCurrentUser } from '@/app/actions/authActions'
 import { revalidatePath } from 'next/cache'
 
+const VERIFIED_AGENT_EMAILS = [
+  'georgescourser@gmail.com',
+  'oderocarilus@gmail.com',
+]
+
+export async function verifyAgentAccess(email?: string | null) {
+  if (!email) return { isVerified: false, agent: null }
+  const cleanEmail = email.trim().toLowerCase()
+
+  const supabase = await createClient()
+  const { data: agentRow } = await supabase
+    .from('agents')
+    .select('*')
+    .ilike('email', cleanEmail)
+    .maybeSingle()
+
+  if (agentRow) {
+    return { isVerified: true, agent: agentRow }
+  }
+
+  if (VERIFIED_AGENT_EMAILS.includes(cleanEmail)) {
+    return {
+      isVerified: true,
+      agent: {
+        id: cleanEmail === 'georgescourser@gmail.com' ? 1 : 2,
+        name: cleanEmail === 'georgescourser@gmail.com' ? 'George Scourser' : 'Odero Carilus',
+        email: cleanEmail,
+      },
+    }
+  }
+
+  return { isVerified: false, agent: null }
+}
+
 export async function getAgents() {
   const supabase = await createClient()
   const { data: agents } = await supabase
@@ -23,7 +57,12 @@ export async function addProperty(prevState: any, formData: FormData) {
   const user = await getCurrentUser()
 
   if (!user) {
-    return { error: 'You must be logged in to post a property.' }
+    return { error: 'You must be logged in as a verified agent to post a house.' }
+  }
+
+  const { isVerified, agent } = await verifyAgentAccess(user.email)
+  if (!isVerified) {
+    return { error: 'Unauthorized: Only verified agents are allowed to post houses.' }
   }
 
   const supabase = await createClient()
@@ -34,7 +73,8 @@ export async function addProperty(prevState: any, formData: FormData) {
   const location = formData.get('location') as string
   const distance = formData.get('distance') as string
   const description = formData.get('description') as string
-  const agent_id = formData.get('agent_id') ? parseInt(formData.get('agent_id') as string) : null
+  const rawAgentId = formData.get('agent_id') as string
+  const agent_id = rawAgentId ? parseInt(rawAgentId) : (agent?.id ?? null)
   const amenities = formData.getAll('amenities') as string[]
   const files = formData.getAll('images') as File[]
   const videoFiles = formData.getAll('videos') as File[]

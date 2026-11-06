@@ -2,8 +2,10 @@ import Link from 'next/link';
 import { createClient } from '@/utils/supabase/server';
 import { getCurrentUser } from '@/app/actions/authActions';
 import { getFavorites } from '@/app/actions/favoriteActions';
+import { getAgents, verifyAgentAccess } from '@/app/actions/propertyActions';
 import FilterSidebar from '@/components/FilterSidebar';
 import FavoriteButton from '@/components/FavoriteButton';
+import PostHouseButton from '@/components/PostHouseButton';
 import { FALLBACK_PROPERTIES } from '@/data/fallbackProperties';
 
 export const dynamic = 'force-dynamic';
@@ -14,6 +16,18 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   const user = await getCurrentUser();
   const userFavorites = user ? await getFavorites() : [];
   const favoriteIds = new Set(userFavorites.map((f: any) => f.property_id));
+
+  const [{ isVerified: isVerifiedAgent }, agentsList] = await Promise.all([
+    verifyAgentAccess(user?.email),
+    getAgents(),
+  ]);
+  const verifiedAgentEmails = Array.from(
+    new Set([
+      'georgescourser@gmail.com',
+      'oderocarilus@gmail.com',
+      ...agentsList.map((a: any) => a.email).filter(Boolean),
+    ])
+  );
   
   let types = resolvedParams.type;
   if (types && typeof types === 'string') {
@@ -67,7 +81,30 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
 
   return (
     <div className="container" style={{ paddingTop: '120px' }}>
-      <h1 className="section-title">All Properties</h1>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '1rem',
+          marginBottom: '2rem',
+        }}
+      >
+        <div>
+          <h1 className="section-title" style={{ marginBottom: '0.25rem', textAlign: 'left' }}>
+            All Properties
+          </h1>
+          <p className="text-muted" style={{ fontSize: '0.95rem', margin: 0 }}>
+            Browse verified vacant student houses near your campus
+          </p>
+        </div>
+        <PostHouseButton
+          serverUserEmail={user?.email || null}
+          serverIsVerifiedAgent={isVerifiedAgent}
+          verifiedAgentEmails={verifiedAgentEmails}
+        />
+      </div>
       <div className="search-page-layout">
         <FilterSidebar />
 

@@ -398,3 +398,37 @@ function initAgentsPage() {
     }, 800);
   }
 }
+
+// Verified-Agent-Only Post House Gatekeeper
+window.handlePostHouseClick = function() {
+  const verifiedEmails = ['georgescourser@gmail.com', 'oderocarilus@gmail.com'];
+  if (window.uniData && Array.isArray(window.uniData.agents)) {
+    window.uniData.agents.forEach(a => {
+      if (a.email) verifiedEmails.push(a.email.trim().toLowerCase());
+    });
+  }
+
+  const checkAndProceed = (user) => {
+    const email = (user && user.email ? user.email : '').trim().toLowerCase();
+    if (!email || !verifiedEmails.includes(email)) {
+      if (window.UniAuth && window.UniAuth.showToast) {
+        window.UniAuth.showToast('Only verified UniNest agents are allowed to post houses.', 'error');
+      }
+      alert(
+        `Access Restricted: Verified Agents Only\n\n` +
+        `Only verified UniNest campus agents are allowed to post vacant houses.\n` +
+        (email ? `Signed in as: ${email} (Not a verified agent)` : `Please sign in with an authorized agent email.`)
+      );
+      return;
+    }
+    window.location.href = '/post-property';
+  };
+
+  if (window.UniAuth) {
+    window.UniAuth.requireAuth((user) => {
+      checkAndProceed(user || window.UniAuth.getUser());
+    }, { reason: 'Only verified UniNest agents can post vacant houses. Sign in with your verified agent account.' });
+  } else {
+    window.location.href = '/post-property';
+  }
+};
