@@ -11,113 +11,46 @@
   const STORAGE_KEY_PENDING_SUBMISSIONS = 'uninest_pending_verification_submissions';
   const STORAGE_KEY_INQUIRIES = 'uninest_agent_inquiries';
 
-  // Seed initial sample pending submissions for realistic Agent Vetting demonstration
+  const SEED_SUBMISSION_IDS = new Set([991, 992, 1, 2, 3, 4, 5, 6, 7, 8]);
+  const SEED_SUBMISSION_REFS = new Set(['UN-VET-7821', 'UN-VET-8430', 'UN-MKT-101', 'UN-MKT-102', 'UN-MKT-103', 'UN-MKT-104', 'UN-MKT-105', 'UN-MKT-106', 'UN-MKT-107', 'UN-MKT-108']);
+  const SEED_INQUIRY_REFS = new Set(['UN-INQ-40812', 'UN-INQ-51920']);
+
+  // Ensure any legacy seeded placeholder items/submissions/inquiries are purged
   function initDefaultSubmissions() {
     try {
-      if (!localStorage.getItem(STORAGE_KEY_PENDING_SUBMISSIONS)) {
-        const seedPending = [
-          {
-            id: 991,
-            listingRef: 'UN-VET-7821',
-            title: 'Bruhm 50L Bedside Mini Fridge (Silent Compressor)',
-            category: 'Appliances',
-            price: 'Ksh 9,800',
-            originalPrice: 'Ksh 15,000',
-            condition: 'Like New',
-            campus: 'KU',
-            campusName: 'Kenyatta University (KU)',
-            location: 'KU Main Campus Gate B Hub',
-            image: 'https://images.unsplash.com/photo-1584992236310-6edddc08acff?w=800&q=80',
-            description: 'Used for one academic semester. Extremely clean, freeze compartment working 100%. Moving out after 4th year finals.',
-            verificationMethod: 'Hostel Visit',
-            ownerLegalName: 'Brian Ochieng (KU Finalist)',
-            ownerPhone: '0712 345 678',
-            ownerEmail: 'b.ochieng@students.ku.ac.ke',
-            ownerPrivateAddress: 'Nyayo 3 Hostel, Wing B, Room 14',
-            assignedAgentId: 1,
-            assignedAgentName: 'Sarah Jenkins (KU Partner Agent)',
-            submittedAt: new Date(Date.now() - 3600000 * 2).toISOString(),
-            status: 'Pending Agent Verification'
-          },
-          {
-            id: 992,
-            listingRef: 'UN-VET-8430',
-            title: 'Texas Instruments TI-84 Plus CE Graphing Calculator',
-            category: 'Academic',
-            price: 'Ksh 4,500',
-            originalPrice: 'Ksh 8,000',
-            condition: 'Gently Used',
-            campus: 'Strathmore',
-            campusName: 'Strathmore University',
-            location: 'Madaraka Agent Kiosk',
-            image: 'https://images.unsplash.com/photo-1594980596870-8aa52a78d8cd?w=800&q=80',
-            description: 'Color screen, rechargeable battery, cable included. Essential for Financial Engineering / Actuarial courses.',
-            verificationMethod: 'Campus Hub Drop-Off',
-            ownerLegalName: 'Faith Muthoni (Actuarial Yr 3)',
-            ownerPhone: '0745 678 901',
-            ownerEmail: 'faith.m@strathmore.edu',
-            ownerPrivateAddress: 'Madaraka Estate Block C, Flat 4',
-            assignedAgentId: 4,
-            assignedAgentName: 'Aisha Mohamed (Strathmore Partner Agent)',
-            submittedAt: new Date(Date.now() - 3600000 * 5).toISOString(),
-            status: 'Pending Agent Verification'
-          }
-        ];
-        localStorage.setItem(STORAGE_KEY_PENDING_SUBMISSIONS, JSON.stringify(seedPending));
+      const rawPending = localStorage.getItem(STORAGE_KEY_PENDING_SUBMISSIONS);
+      if (rawPending) {
+        const parsed = JSON.parse(rawPending);
+        if (Array.isArray(parsed)) {
+          const cleaned = parsed.filter(item => !SEED_SUBMISSION_IDS.has(Number(item.id)) && !SEED_SUBMISSION_REFS.has(item.listingRef));
+          localStorage.setItem(STORAGE_KEY_PENDING_SUBMISSIONS, JSON.stringify(cleaned));
+        }
+      }
+      const rawPublic = localStorage.getItem(STORAGE_KEY_PUBLIC);
+      if (rawPublic) {
+        const parsedPub = JSON.parse(rawPublic);
+        if (Array.isArray(parsedPub)) {
+          const cleanedPub = parsedPub.filter(item => !SEED_SUBMISSION_IDS.has(Number(item.id)) && !SEED_SUBMISSION_REFS.has(item.listingRef));
+          localStorage.setItem(STORAGE_KEY_PUBLIC, JSON.stringify(cleanedPub));
+        }
       }
     } catch (e) {
-      console.warn('Submissions seed notice:', e);
+      console.warn('Submissions cleanup notice:', e);
     }
   }
 
-  // Seed default inquiries
   function initDefaultInquiries() {
     try {
-      if (!localStorage.getItem(STORAGE_KEY_INQUIRIES)) {
-        const seedInquiries = [
-          {
-            refCode: 'UN-INQ-40812',
-            createdAt: new Date(Date.now() - 3600000 * 4).toISOString(),
-            itemId: 1,
-            itemTitle: 'Ramtons 90L Single-Door Mini Fridge',
-            itemPrice: 'Ksh 11,500',
-            campus: 'KU',
-            clientName: 'Dennis Mutua',
-            clientPhone: '0711 345 567',
-            clientEmail: 'd.mutua@students.ku.ac.ke',
-            preferredDate: '2026-10-14',
-            preferredTime: 'Morning (10:00 AM - 12:00 PM)',
-            preferredHub: 'KU Gate B Security / Student Center Foyer',
-            notes: 'Need agent to plug in to verify freezing before payment.',
-            status: 'Agent Confirmed',
-            agentName: 'Sarah Jenkins (KU Partner Agent)',
-            agentNotes: 'Contacted seller; agreed to meet at Gate B student lounge for power test.',
-            dealUpdate: 'Viewing confirmed for Wednesday Oct 14 at 10:30 AM at KU Gate B Lounge. Agent Sarah will be present.'
-          },
-          {
-            refCode: 'UN-INQ-51920',
-            createdAt: new Date(Date.now() - 3600000 * 18).toISOString(),
-            itemId: 3,
-            itemTitle: '6kg Gas Cylinder + Burner & Heavy Duty Grill',
-            itemPrice: 'Ksh 3,400',
-            campus: 'UoN',
-            clientName: 'Mercy Achieng',
-            clientPhone: '0722 890 123',
-            clientEmail: 'm.achieng@students.uonbi.ac.ke',
-            preferredDate: '2026-10-13',
-            preferredTime: 'Afternoon (2:00 PM - 4:00 PM)',
-            preferredHub: 'Chiromo Campus Main Entrance',
-            notes: 'Looking to pick this up after chemistry lab session.',
-            status: 'Pending Agent Review',
-            agentName: 'Brian Omondi (UoN Partner Agent)',
-            agentNotes: 'Awaiting student owner confirmation of time slot.',
-            dealUpdate: 'Inquiry received. Agent Brian is verifying owner availability for handover.'
-          }
-        ];
-        localStorage.setItem(STORAGE_KEY_INQUIRIES, JSON.stringify(seedInquiries));
+      const rawInquiries = localStorage.getItem(STORAGE_KEY_INQUIRIES);
+      if (rawInquiries) {
+        const parsed = JSON.parse(rawInquiries);
+        if (Array.isArray(parsed)) {
+          const cleaned = parsed.filter(inq => !SEED_INQUIRY_REFS.has(inq.refCode));
+          localStorage.setItem(STORAGE_KEY_INQUIRIES, JSON.stringify(cleaned));
+        }
       }
     } catch (e) {
-      console.warn('Inquiry storage init notice:', e);
+      console.warn('Inquiry cleanup notice:', e);
     }
   }
 
@@ -689,15 +622,17 @@
     const listingRef = `UN-VET-${Math.floor(1000 + Math.random() * 9000)}`;
 
     const campusAgents = {
-      'KU': { id: 1, name: 'Sarah Jenkins (KU Partner Agent)' },
-      'JKUAT': { id: 2, name: 'David Kimani (JKUAT Partner Agent)' },
-      'UoN': { id: 3, name: 'Brian Omondi (UoN Partner Agent)' },
-      'Strathmore': { id: 4, name: 'Aisha Mohamed (Strathmore Partner Agent)' },
-      'USIU': { id: 1, name: 'Sarah Jenkins (USIU/KU Partner Agent)' },
-      'Daystar': { id: 3, name: 'Brian Omondi (Daystar Partner Agent)' },
-      'MKU': { id: 2, name: 'David Kimani (MKU Partner Agent)' }
+      'KU': { id: 1, name: 'George Scourser' },
+      'JKUAT': { id: 2, name: 'Odero Carilus' },
+      'UoN': { id: 1, name: 'George Scourser' },
+      'Strathmore': { id: 2, name: 'Odero Carilus' },
+      'USIU': { id: 1, name: 'George Scourser' },
+      'Daystar': { id: 2, name: 'Odero Carilus' },
+      'MKU': { id: 2, name: 'Odero Carilus' },
+      'Moi': { id: 1, name: 'George Scourser' },
+      'Egerton': { id: 2, name: 'Odero Carilus' }
     };
-    const assignedAgent = campusAgents[campus] || { id: 1, name: 'Sarah Jenkins (UniNest Central Agent)' };
+    const assignedAgent = campusAgents[campus] || { id: 1, name: 'George Scourser' };
 
     // Intake submission record stored in the Agent's Vetting Queue
     const pendingSubmission = {
@@ -1353,7 +1288,10 @@
               <div style="font-size: 0.78rem; color: #16a34a; font-weight: 600; margin-top: 0.2rem;">✓ Supervised by: ${agent.name}</div>
             </div>
           </div>
-          <div>
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <button type="button" class="btn btn-primary" onclick="UniMarketplace.markAgentItemSold(${item.id}, '${item.listingRef || ''}')" style="background: #dcfce7; border: 1px solid #86efac; color: #15803d; font-size: 0.85rem; padding: 0.5rem 1rem; font-weight: 600; border-radius: 9999px; cursor: pointer;">
+              ✓ Mark as Sold
+            </button>
             <button type="button" class="btn btn-secondary" onclick="UniMarketplace.deleteAgentItem(${item.id}, '${item.listingRef || ''}')" style="background: #fee2e2; border-color: #fca5a5; color: #dc2626; font-size: 0.85rem; padding: 0.5rem 1rem; font-weight: 600; border-radius: 9999px; cursor: pointer;">
               🗑️ Delete Item
             </button>
@@ -1418,6 +1356,67 @@
     initHomepageMarketplace();
 
     showToast(`✓ Listing "${targetItem.title}" deleted successfully from your portal.`);
+  }
+
+  function markAgentItemSold(itemId, itemRef) {
+    const currentAgent = currentActiveAgent || getCurrentVerifiedAgent();
+    if (!currentAgent) {
+      alert('Unauthorized: Only verified agents can mark items as sold.');
+      return;
+    }
+
+    const allItems = getAllItems();
+    const targetItem = allItems.find(i => i.id == itemId || (itemRef && i.listingRef === itemRef));
+    if (!targetItem) {
+      showToast('Item not found.', 'error');
+      return;
+    }
+
+    if (!isItemAssignedToAgent(targetItem, currentAgent)) {
+      alert(`⚠️ Unauthorized Action: You can only manage items assigned to your portal (${currentAgent.name}).`);
+      return;
+    }
+
+    try {
+      const rawSold = localStorage.getItem('uninest_sold_items');
+      const soldList = rawSold ? JSON.parse(rawSold) : [];
+      soldList.unshift({
+        id: `item-live-${targetItem.id}-${Date.now()}`,
+        title: targetItem.title,
+        kind: 'item',
+        subCategory: targetItem.category || 'Marketplace',
+        price: targetItem.price,
+        originalPrice: targetItem.originalPrice || undefined,
+        campus: targetItem.campus || 'Campus',
+        campusName: targetItem.campusName || targetItem.campus || 'Campus',
+        location: targetItem.location || 'Campus Hub',
+        image: targetItem.image,
+        listingRef: targetItem.listingRef || `UN-MKT-${targetItem.id}`,
+        agentName: currentAgent.name || targetItem.agentName || 'Verified UniNest Agent',
+        soldAt: 'Just now',
+        description: targetItem.description || 'Sold via verified UniNest campus agent.',
+        amenitiesOrCondition: [targetItem.condition || 'Verified', 'Agent Handover ✓']
+      });
+      localStorage.setItem('uninest_sold_items', JSON.stringify(soldList));
+
+      const stored = localStorage.getItem(STORAGE_KEY_PUBLIC);
+      if (stored) {
+        let pubList = JSON.parse(stored);
+        pubList = pubList.filter(i => !(i.id == itemId || (itemRef && i.listingRef === itemRef)));
+        localStorage.setItem(STORAGE_KEY_PUBLIC, JSON.stringify(pubList));
+      }
+    } catch (e) {
+      console.error(e);
+    }
+
+    if (window.uniData && Array.isArray(window.uniData.marketplaceItems)) {
+      window.uniData.marketplaceItems = window.uniData.marketplaceItems.filter(i => !(i.id == itemId || (itemRef && i.listingRef === itemRef)));
+    }
+
+    renderAgentListingsQueue(currentAgent);
+    initMarketplacePage();
+    initHomepageMarketplace();
+    showToast(`✓ "${targetItem.title}" marked as SOLD and added to the Sold Archive (/sold)!`);
   }
 
   function promptDealUpdate(refCode) {
@@ -1517,6 +1516,7 @@
     switchAgentTab,
     renderAgentListingsQueue,
     deleteAgentItem,
+    markAgentItemSold,
     approveAndPublishSubmission,
     scheduleInspectionVisit,
     rejectSubmission,

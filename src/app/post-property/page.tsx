@@ -242,7 +242,6 @@ export default function PostPropertyPage() {
               <input 
                 type="text" 
                 name="title" 
-                placeholder="e.g. Modern Studio near Campus" 
                 required 
               />
             </label>
@@ -271,11 +270,10 @@ export default function PostPropertyPage() {
               </label>
 
               <label className="form-field">
-                <span>Monthly Rent ($) <span className="required">*</span></span>
+                <span>Monthly Rent (KSH) <span className="required">*</span></span>
                 <input 
                   type="text" 
                   name="rent" 
-                  placeholder="e.g. $1200" 
                   required 
                 />
               </label>
@@ -291,7 +289,6 @@ export default function PostPropertyPage() {
                 <input 
                   type="text" 
                   name="location" 
-                  placeholder="e.g. Downtown, near North Gate" 
                   required 
                 />
               </label>
@@ -301,7 +298,6 @@ export default function PostPropertyPage() {
                 <input 
                   type="text" 
                   name="distance" 
-                  placeholder="e.g. 5 min walk" 
                 />
               </label>
             </div>
@@ -310,7 +306,6 @@ export default function PostPropertyPage() {
               <span>Description</span>
               <textarea 
                 name="description" 
-                placeholder="Describe the property and its best features..." 
                 rows={5}
               ></textarea>
             </label>
@@ -361,7 +356,6 @@ export default function PostPropertyPage() {
                   </span>
                   <textarea 
                     name="image_urls" 
-                    placeholder="https://images.unsplash.com/...&#10;https://example.com/room.jpg" 
                     rows={2}
                     value={imageUrlInput}
                     onChange={(e) => setImageUrlInput(e.target.value)}

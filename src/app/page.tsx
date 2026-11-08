@@ -19,7 +19,7 @@ export default async function Home() {
     .order('id', { ascending: false })
     .limit(6);
     
-  const properties = (propertiesData && propertiesData.length > 0) ? propertiesData : FALLBACK_PROPERTIES;
+  const properties = propertiesData || [];
 
   return (
     <>

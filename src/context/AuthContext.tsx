@@ -71,17 +71,28 @@ function getStoredUser(): AuthUser | null {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(() => getStoredUser())
+  const [user, setUser] = useState<AuthUser | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
 
   useEffect(() => {
     let mounted = true
 
-    // 1. Check local session
+    // 1. Check local session and ensure cookies are synced for SSR & Middleware
     const stored = getStoredUser()
     if (stored) {
       setUser(stored)
+      try {
+        const encoded = encodeURIComponent(
+          JSON.stringify({
+            id: stored.id,
+            email: stored.email.toLowerCase(),
+            name: stored.name || stored.email.split('@')[0],
+          })
+        )
+        document.cookie = `uninest_user_client=${encoded}; path=/; max-age=2592000; SameSite=Lax`
+        document.cookie = `uninest_user_session=${encoded}; path=/; max-age=2592000; SameSite=Lax`
+      } catch (e) {}
     }
 
     // 2. Listen to Supabase auth state change if client is in window

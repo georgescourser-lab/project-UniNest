@@ -17,6 +17,7 @@ export default function NavLinks({ isLoggedIn = false, isAdmin = false }: { isLo
       <Link href="/search" className={linkClassName('/search')}>Properties</Link>
       <Link href="/agents" className={linkClassName('/agents')}>Agents</Link>
       <a href="/marketplace.html" className={pathname?.startsWith('/marketplace') ? 'active' : ''}>Marketplace</a>
+      <Link href="/sold" className={linkClassName('/sold')}>Sold</Link>
     </div>
   );
 }

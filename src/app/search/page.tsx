@@ -70,14 +70,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   query = query.order('id', { ascending: false });
 
   const { data: propertiesData } = await query;
-  let properties = propertiesData || [];
-  if (properties.length === 0) {
-    properties = FALLBACK_PROPERTIES.filter(p => {
-      if (typesArray && typesArray.length > 0 && !typesArray.includes(p.type)) return false;
-      if (location && location.trim() !== '' && !p.location.toLowerCase().includes(location.toLowerCase())) return false;
-      return true;
-    });
-  }
+  const properties = propertiesData || [];
 
   return (
     <div className="container" style={{ paddingTop: '120px' }}>
@@ -129,6 +122,14 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
               </div>
             </div>
           ))}
+          {properties.length === 0 && (
+            <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '4rem 1.5rem', background: '#ffffff', borderRadius: '16px', border: '1px dashed #cbd5e1' }}>
+              <h3 style={{ fontSize: '1.25rem', color: '#0f172a', marginBottom: '0.5rem' }}>No vacant houses posted yet</h3>
+              <p className="text-muted" style={{ marginBottom: 0 }}>
+                Verified agents can use the <strong>+ Post House</strong> button above to list available student properties.
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>

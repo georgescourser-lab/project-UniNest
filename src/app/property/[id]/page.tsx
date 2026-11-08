@@ -2,7 +2,7 @@ import Link from 'next/link';
 import PropertyInquiryForm from './PropertyInquiryForm';
 import FavoriteButton from '@/components/FavoriteButton';
 import { notFound, redirect } from 'next/navigation';
-import { deleteProperty } from '@/app/actions/propertyActions';
+import { deleteProperty, markPropertyAsSold } from '@/app/actions/propertyActions';
 import { getCurrentUser } from '@/app/actions/authActions';
 import { createClient } from '@/utils/supabase/server';
 import { FALLBACK_PROPERTIES } from '@/data/fallbackProperties';
@@ -163,13 +163,29 @@ export default async function PropertyDetailPage({ params }: PageProps) {
             <PropertyInquiryForm propertyId={property.id} propertyTitle={property.title || 'Property'} user={user} />
 
             {isAdmin && (
-              <form action={async () => {
-                'use server';
-                const res = await deleteProperty(property.id);
-                if (res?.success) redirect('/search');
-              }}>
-                <button type="submit" className="btn btn-secondary" style={{backgroundColor: '#ef4444', color: 'white', marginTop: '1.5rem', width: '100%', borderColor: '#ef4444'}}>Delete Property</button>
-              </form>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '1.5rem' }}>
+                <form action={async () => {
+                  'use server';
+                  const res = await markPropertyAsSold(property.id);
+                  if (res?.success) redirect('/sold');
+                }}>
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    style={{ backgroundColor: '#16a34a', color: 'white', width: '100%', borderColor: '#16a34a', fontWeight: 600 }}
+                  >
+                    ✓ Mark House as Sold / Taken
+                  </button>
+                </form>
+
+                <form action={async () => {
+                  'use server';
+                  const res = await deleteProperty(property.id);
+                  if (res?.success) redirect('/search');
+                }}>
+                  <button type="submit" className="btn btn-secondary" style={{backgroundColor: '#ef4444', color: 'white', width: '100%', borderColor: '#ef4444'}}>Delete Property</button>
+                </form>
+              </div>
             )}
           </div>
         </aside>

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
@@ -23,12 +23,18 @@ export default function PostHouseButton({
 }: PostHouseButtonProps) {
   const { user, logout } = useAuth();
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
   const [modalState, setModalState] = useState<'closed' | 'unauthenticated' | 'unauthorized'>('closed');
 
-  const activeEmail = (user?.email || serverUserEmail || '').trim().toLowerCase();
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const clientEmail = mounted ? user?.email : null;
+  const activeEmail = (clientEmail || serverUserEmail || '').trim().toLowerCase();
   const normalizedAllowed = verifiedAgentEmails.map((e) => e.trim().toLowerCase());
   const isVerifiedAgent =
-    serverIsVerifiedAgent || (Boolean(activeEmail) && normalizedAllowed.includes(activeEmail));
+    serverIsVerifiedAgent || (mounted && Boolean(activeEmail) && normalizedAllowed.includes(activeEmail));
 
   const handlePostHouseClick = () => {
     if (!activeEmail) {

@@ -3,6 +3,11 @@
 import { createClient } from '@/utils/supabase/server'
 import { getCurrentUser } from '@/app/actions/authActions'
 import { revalidatePath } from 'next/cache'
+import { cookies } from 'next/headers'
+import { FALLBACK_PROPERTIES } from '@/data/fallbackProperties'
+
+const SOLD_HOUSES_COOKIE = 'uninest_sold_houses_archive'
+const THIRTY_DAYS = 60 * 60 * 24 * 30
 
 const VERIFIED_AGENT_EMAILS = [
   'georgescourser@gmail.com',
@@ -197,10 +202,102 @@ export async function deleteProperty(propertyId: number) {
     
     revalidatePath('/search')
     revalidatePath('/')
+    revalidatePath('/sold')
     
     return { success: true }
   } catch (error: any) {
     console.error('Database error deleting property:', error)
     return { error: 'Failed to delete property.' }
+  }
+}
+
+export async function getSoldPropertiesArchive() {
+  try {
+    const cookieStore = await cookies()
+    const raw = cookieStore.get(SOLD_HOUSES_COOKIE)?.value
+    if (raw) {
+      const parsed = JSON.parse(decodeURIComponent(raw))
+      if (Array.isArray(parsed)) {
+        return parsed
+      }
+    }
+  } catch (e) {}
+  return []
+}
+
+export async function markPropertyAsSold(propertyId: number) {
+  const user = await getCurrentUser()
+  if (!user) {
+    return { error: 'You must be logged in as a verified agent to mark a house as sold.' }
+  }
+
+  const { isVerified, agent } = await verifyAgentAccess(user.email)
+  if (!isVerified) {
+    return { error: 'Unauthorized: Only verified agents can mark houses as sold.' }
+  }
+
+  const supabase = await createClient()
+
+  try {
+    const { data: prop } = await supabase
+      .from('properties')
+      .select(`*, agents (*)`)
+      .eq('id', propertyId)
+      .maybeSingle()
+
+    const targetProp = prop || FALLBACK_PROPERTIES.find((p) => p.id === propertyId)
+
+    if (targetProp) {
+      const existingArchive = await getSoldPropertiesArchive()
+      const soldRecord = {
+        id: `house-live-${targetProp.id}-${Date.now()}`,
+        title: targetProp.title || 'Student Property',
+        kind: 'house' as const,
+        subCategory: targetProp.type || 'Apartment',
+        price: `${targetProp.rent}`,
+        campus: (targetProp.location || '').includes('KU')
+          ? 'KU'
+          : (targetProp.location || '').includes('JKUAT') || (targetProp.location || '').includes('Juja')
+          ? 'JKUAT'
+          : (targetProp.location || '').includes('UoN')
+          ? 'UoN'
+          : (targetProp.location || '').includes('Strathmore')
+          ? 'Strathmore'
+          : 'Campus',
+        campusName: targetProp.location || 'Campus Area',
+        location: targetProp.location || 'Campus Vicinity',
+        image:
+          targetProp.image ||
+          (targetProp.images && targetProp.images[0]) ||
+          'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800&q=80',
+        listingRef: `UN-HSE-${String(targetProp.id).padStart(3, '0')}`,
+        agentName: targetProp.agents?.name || agent?.name || 'Verified UniNest Agent',
+        soldAt: 'Just now',
+        description: targetProp.description || 'Verified student accommodation leased through UniNest.',
+        amenitiesOrCondition: targetProp.amenities || ['Verified Listing'],
+      }
+
+      const updatedArchive = [soldRecord, ...existingArchive].slice(0, 20)
+      const cookieStore = await cookies()
+      cookieStore.set(SOLD_HOUSES_COOKIE, encodeURIComponent(JSON.stringify(updatedArchive)), {
+        httpOnly: false,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: THIRTY_DAYS,
+      })
+    }
+
+    // Remove from active vacant properties in Supabase if present
+    await supabase.from('properties').delete().eq('id', propertyId)
+
+    revalidatePath('/search')
+    revalidatePath('/')
+    revalidatePath('/sold')
+
+    return { success: true }
+  } catch (error: any) {
+    console.error('Error marking property as sold:', error)
+    return { error: 'Failed to mark property as sold.' }
   }
 }

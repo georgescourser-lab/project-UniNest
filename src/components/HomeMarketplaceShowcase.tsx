@@ -1,7 +1,6 @@
 'use client';
 
-import { useState } from 'react';
-import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import { MARKETPLACE_ITEMS, MarketplaceItem } from '@/data/marketplaceItems';
 
 const CATEGORIES = ['All', 'Appliances', 'Furniture', 'Academic', 'Kitchen', 'Bedding'];
@@ -9,10 +8,25 @@ const CATEGORIES = ['All', 'Appliances', 'Furniture', 'Academic', 'Kitchen', 'Be
 export default function HomeMarketplaceShowcase() {
   const [activeCategory, setActiveCategory] = useState('All');
   const [selectedItem, setSelectedItem] = useState<MarketplaceItem | null>(null);
+  const [liveItems, setLiveItems] = useState<MarketplaceItem[]>(MARKETPLACE_ITEMS);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('uninest_posted_marketplace_items');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          setLiveItems([...parsed, ...MARKETPLACE_ITEMS]);
+        }
+      }
+    } catch (e) {
+      console.warn('Error loading marketplace items:', e);
+    }
+  }, []);
 
   const filteredItems = (activeCategory === 'All'
-    ? MARKETPLACE_ITEMS
-    : MARKETPLACE_ITEMS.filter((item) => item.category.toLowerCase() === activeCategory.toLowerCase())
+    ? liveItems
+    : liveItems.filter((item) => item.category.toLowerCase() === activeCategory.toLowerCase())
   ).slice(0, 4);
 
   const getConditionClass = (cond: string) => {

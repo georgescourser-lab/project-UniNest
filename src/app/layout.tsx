@@ -58,6 +58,7 @@ export default function RootLayout({
                   <li><Link href="/search">All Properties</Link></li>
                   <li><Link href="/agents">Verified Agents</Link></li>
                   <li><a href="/marketplace.html">Student Marketplace</a></li>
+                  <li><Link href="/sold">Sold Houses &amp; Items</Link></li>
                   <li><a href="/marketplace.html#sell">Sell Dorm Items</a></li>
                   <li>
                     <a href="https://www.tiktok.com/@uninest.ke" target="_blank" rel="noopener noreferrer">

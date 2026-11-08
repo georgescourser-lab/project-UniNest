@@ -32,18 +32,18 @@ window.fetchSupabaseData = async function() {
         if (propErr) console.warn('Supabase properties notice:', propErr.message);
         if (agentErr) console.warn('Supabase agents notice:', agentErr.message);
 
-        // Only override properties if valid non-empty data was returned from database
-        if (properties && Array.isArray(properties) && properties.length > 0) {
+        // Sync properties from database (including empty array when no properties are posted)
+        if (properties && Array.isArray(properties)) {
             const mappedProperties = properties.map(p => ({
                 id: p.id,
                 title: p.title,
                 type: p.type,
                 rent: p.rent,
                 location: p.location,
-                distance: p.distance || '1.0 km',
-                image: p.image || (p.images && p.images[0]) || 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800&q=80',
-                images: p.images || [p.image || 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800&q=80'],
-                amenities: p.amenities || ['Wi-Fi included', 'Security 24/7'],
+                distance: p.distance || '',
+                image: p.image || (p.images && p.images[0]) || '',
+                images: p.images || (p.image ? [p.image] : []),
+                amenities: p.amenities || [],
                 agentId: p.agent_id || 1,
                 description: p.description || ''
             }));
