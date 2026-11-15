@@ -176,7 +176,7 @@ function AuthCallbackContent() {
         const timer = setTimeout(() => {
           if (!isMounted) return;
           setStatus('error');
-          setMessage('No valid confirmation tokens found in the URL. Please log in with your email and password.');
+          setMessage('No valid authentication tokens found in the URL. Please sign in with Google.');
         }, 2500);
 
         return () => clearTimeout(timer);
@@ -302,23 +302,7 @@ function AuthCallbackContent() {
                 textDecoration: 'none',
               }}
             >
-              Go to Log In
-            </Link>
-            <Link
-              href="/signup"
-              style={{
-                display: 'inline-block',
-                background: '#f1f5f9',
-                color: '#334155',
-                fontWeight: 600,
-                fontSize: '0.88rem',
-                padding: '0.6rem 1.25rem',
-                borderRadius: '8px',
-                textDecoration: 'none',
-                border: '1px solid #cbd5e1',
-              }}
-            >
-              Sign Up
+              Sign in with Google
             </Link>
           </div>
         </div>

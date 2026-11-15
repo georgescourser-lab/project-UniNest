@@ -1,24 +1,33 @@
 // ============================================================================
-// UniNest Universal Authentication & Session Manager (js/auth.js)
-// Google OAuth + Email & Password with Mandatory Email Sign-Up Confirmation
+// UniNest Universal Authentication & Session Manager (Google OAuth Only)
 // ============================================================================
 
 (function () {
+  'use strict';
+
   const STORAGE_KEY_USER = 'uninest_user';
   const CLIENT_COOKIE_NAME = 'uninest_user_client';
+  const SESSION_COOKIE_NAME = 'uninest_user_session';
 
   let currentUser = null;
   let pendingAction = null;
-  let currentAuthMode = 'signin'; // 'signin' | 'signup'
-  let awaitingConfirmation = false;
 
-  // Read user from localStorage or client cookie
   function getStoredUser() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY_USER);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (parsed && parsed.email) return parsed;
+        if (parsed && parsed.email) {
+          return {
+            id: parsed.id,
+            email: parsed.email,
+            name: parsed.name || parsed.email.split('@')[0],
+            user_metadata: {
+              full_name: parsed.name || parsed.email.split('@')[0],
+              display_name: parsed.name || parsed.email.split('@')[0],
+            },
+          };
+        }
       }
     } catch (e) {}
 
@@ -26,11 +35,19 @@
       const cookies = document.cookie.split(';');
       for (const c of cookies) {
         const [k, v] = c.trim().split('=');
-        if ((k === CLIENT_COOKIE_NAME || k === 'uninest_user_session') && v) {
+        if ((k === CLIENT_COOKIE_NAME || k === SESSION_COOKIE_NAME) && v) {
           const parsed = JSON.parse(decodeURIComponent(v));
           if (parsed && parsed.email) {
             localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(parsed));
-            return parsed;
+            return {
+              id: parsed.id,
+              email: parsed.email,
+              name: parsed.name || parsed.email.split('@')[0],
+              user_metadata: {
+                full_name: parsed.name || parsed.email.split('@')[0],
+                display_name: parsed.name || parsed.email.split('@')[0],
+              },
+            };
           }
         }
       }
@@ -53,11 +70,12 @@
     currentUser = payload;
     try {
       localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(payload));
-      document.cookie = `${CLIENT_COOKIE_NAME}=${encodeURIComponent(
-        JSON.stringify(payload)
-      )}; path=/; max-age=2592000; SameSite=Lax`;
+      const encoded = encodeURIComponent(JSON.stringify(payload));
+      document.cookie = `${CLIENT_COOKIE_NAME}=${encoded}; path=/; max-age=2592000; SameSite=Lax`;
+      document.cookie = `${SESSION_COOKIE_NAME}=${encoded}; path=/; max-age=2592000; SameSite=Lax`;
     } catch (e) {}
     updateNavbarAuthUI();
+    renderNavActions();
   }
 
   function clearStoredUser() {
@@ -65,9 +83,10 @@
     try {
       localStorage.removeItem(STORAGE_KEY_USER);
       document.cookie = `${CLIENT_COOKIE_NAME}=; path=/; max-age=0; SameSite=Lax`;
-      document.cookie = `uninest_user_session=; path=/; max-age=0; SameSite=Lax`;
+      document.cookie = `${SESSION_COOKIE_NAME}=; path=/; max-age=0; SameSite=Lax`;
     } catch (e) {}
     updateNavbarAuthUI();
+    renderNavActions();
   }
 
   function isAuthenticated() {
@@ -113,90 +132,38 @@
 
     const modalHtml = `
       <div id="uni-auth-modal" class="uni-modal-overlay" style="z-index: 99999;">
-        <div class="uni-modal-dialog" style="max-width: 450px; padding: 2rem; border-radius: 20px; position: relative; background: #ffffff;">
+        <div class="uni-modal-dialog" style="max-width: 420px; padding: 2.25rem 2rem; border-radius: 20px; position: relative; background: #ffffff; text-align: center;">
           <button type="button" onclick="window.UniAuth.closeAuthModal()" aria-label="Close" style="position: absolute; top: 1rem; right: 1rem; background: #f1f5f9; border: none; width: 32px; height: 32px; border-radius: 50%; font-size: 1.2rem; cursor: pointer; color: #475569;">&times;</button>
           
-          <div style="text-align: center; margin-bottom: 1.25rem;">
-            <div style="font-size: 1.45rem; font-weight: 800; color: #0f172a; margin-bottom: 0.25rem;">
+          <div style="margin-bottom: 1.5rem;">
+            <div style="font-size: 1.55rem; font-weight: 800; color: #0f172a; margin-bottom: 0.4rem;">
               Uni<span style="color: #2563eb;">Nest</span>
             </div>
-            <p id="uni-auth-reason" style="font-size: 0.88rem; color: #64748b; margin: 0;">
-              Sign in or create an account to continue.
+            <h3 style="font-size: 1.25rem; font-weight: 700; color: #0f172a; margin: 0 0 0.4rem 0;">
+              Sign in with Google
+            </h3>
+            <p id="uni-auth-reason" style="font-size: 0.9rem; color: #64748b; margin: 0; line-height: 1.5;">
+              Continue with your Google account to access UniNest student housing and marketplace features.
             </p>
           </div>
 
-          <!-- Sign In / Sign Up Tabs -->
-          <div id="uni-auth-tabs" style="display: grid; grid-template-columns: 1fr 1fr; background: #f1f5f9; padding: 0.25rem; border-radius: 10px; margin-bottom: 1.25rem;">
-            <button type="button" id="uni-tab-signin" onclick="window.UniAuth.switchTab('signin')" style="padding: 0.55rem; border-radius: 8px; border: none; font-weight: 600; font-size: 0.88rem; cursor: pointer; background: #ffffff; color: #0f172a; box-shadow: 0 2px 5px rgba(0,0,0,0.06);">
-              Sign In
-            </button>
-            <button type="button" id="uni-tab-signup" onclick="window.UniAuth.switchTab('signup')" style="padding: 0.55rem; border-radius: 8px; border: none; font-weight: 600; font-size: 0.88rem; cursor: pointer; background: transparent; color: #64748b;">
-              Create Account
-            </button>
-          </div>
-
           <!-- Alert Box -->
-          <div id="uni-auth-alert" style="display: none; padding: 0.75rem 0.9rem; border-radius: 8px; font-size: 0.84rem; margin-bottom: 1rem; line-height: 1.45;"></div>
+          <div id="uni-auth-alert" style="display: none; padding: 0.75rem 0.9rem; border-radius: 8px; font-size: 0.84rem; margin-bottom: 1rem; line-height: 1.45; text-align: left;"></div>
 
           <!-- Google OAuth Button -->
-          <div id="uni-google-section">
-            <button type="button" id="uni-google-btn" onclick="window.UniAuth.signInWithGoogle()" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.6rem; padding: 0.75rem 1rem; border-radius: 10px; border: 1.5px solid #cbd5e1; background: #ffffff; color: #0f172a; font-weight: 600; font-size: 0.9rem; cursor: pointer; margin-bottom: 1.1rem;">
-              <svg width="18" height="18" viewBox="0 0 24 24">
-                <path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.4 1 3.5 3.6 1.6 7.4l3.7 2.8C6.2 7.2 8.9 5 12 5z"/>
-                <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.6l3.7 2.9c2.2-2 3.7-5 3.7-8.7z"/>
-                <path fill="#FBBC05" d="M5.3 14.8c-.2-.8-.4-1.6-.4-2.5s.2-1.7.4-2.5L1.6 7C.6 9 0 11.2 0 13.5s.6 4.5 1.6 6.5l3.7-2.9z"/>
-                <path fill="#34A853" d="M12 24c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3.1 0-5.8-2.1-6.7-5l-3.7 2.9C3.5 21.4 7.4 24 12 24z"/>
-              </svg>
-              Continue with Google
-            </button>
+          <button type="button" id="uni-google-btn" onclick="window.UniAuth.signInWithGoogle()" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.7rem; padding: 0.85rem 1.25rem; border-radius: 12px; border: 1.5px solid #cbd5e1; background: #ffffff; color: #0f172a; font-weight: 700; font-size: 0.95rem; cursor: pointer; box-shadow: 0 2px 6px rgba(15, 23, 42, 0.05);">
+            <svg width="20" height="20" viewBox="0 0 24 24">
+              <path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.4 1 3.5 3.6 1.6 7.4l3.7 2.8C6.2 7.2 8.9 5 12 5z"/>
+              <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.6l3.7 2.9c2.2-2 3.7-5 3.7-8.7z"/>
+              <path fill="#FBBC05" d="M5.3 14.8c-.2-.8-.4-1.6-.4-2.5s.2-1.7.4-2.5L1.6 7C.6 9 0 11.2 0 13.5s.6 4.5 1.6 6.5l3.7-2.9z"/>
+              <path fill="#34A853" d="M12 24c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3.1 0-5.8-2.1-6.7-5l-3.7 2.9C3.5 21.4 7.4 24 12 24z"/>
+            </svg>
+            Continue with Google
+          </button>
 
-            <div style="display: flex; align-items: center; gap: 0.65rem; margin-bottom: 1.1rem; color: #94a3b8; font-size: 0.75rem; text-transform: uppercase; font-weight: 600;">
-              <div style="flex: 1; height: 1px; background: #e2e8f0;"></div>
-              <span>or with email &amp; password</span>
-              <div style="flex: 1; height: 1px; background: #e2e8f0;"></div>
-            </div>
+          <div style="margin-top: 1.35rem; padding-top: 1rem; border-top: 1px solid #f1f5f9; font-size: 0.78rem; color: #94a3b8;">
+            🔒 Verified Google authentication powered by Supabase.
           </div>
-
-          <!-- Step 1: Email & Password Form -->
-          <form id="uni-auth-email-form" onsubmit="window.UniAuth.handleEmailPasswordSubmit(event)">
-            <div id="uni-auth-name-group" style="display: none; margin-bottom: 0.85rem;">
-              <label style="display: block; font-size: 0.82rem; font-weight: 600; color: #1e293b; margin-bottom: 0.3rem;">Full Name</label>
-              <input type="text" id="uni-auth-name" placeholder="e.g. Jane Wanjiku" style="width: 100%; padding: 0.68rem 0.85rem; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.9rem;">
-            </div>
-
-            <div style="margin-bottom: 0.85rem;">
-              <label style="display: block; font-size: 0.82rem; font-weight: 600; color: #1e293b; margin-bottom: 0.3rem;">Email Address *</label>
-              <input type="email" id="uni-auth-email" required placeholder="you@uni-nest.app or student@gmail.com" style="width: 100%; padding: 0.68rem 0.85rem; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.9rem;">
-            </div>
-
-            <div style="margin-bottom: 1.15rem;">
-              <label style="display: block; font-size: 0.82rem; font-weight: 600; color: #1e293b; margin-bottom: 0.3rem;">Password *</label>
-              <input type="password" id="uni-auth-password" required minlength="6" placeholder="Enter your password (min. 6 characters)" style="width: 100%; padding: 0.68rem 0.85rem; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.9rem;">
-            </div>
-
-            <button type="submit" id="uni-auth-submit-btn" class="btn btn-primary" style="width: 100%; padding: 0.78rem; font-weight: 600; font-size: 0.92rem; border-radius: 10px;">
-              Sign In
-            </button>
-          </form>
-
-          <!-- Step 2: Sign-Up Email Confirmation Code Form -->
-          <form id="uni-auth-otp-form" onsubmit="window.UniAuth.handleVerifyConfirmationSubmit(event)" style="display: none;">
-            <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px; padding: 0.85rem; margin-bottom: 1rem; font-size: 0.84rem; color: #1e3a8a; line-height: 1.45;">
-              📧 Confirmation email sent to <strong id="uni-otp-target-email"></strong>.<br>
-              Enter the <strong>6-digit verification code</strong> from your email below (or click the confirmation link inside the email) to activate your account.
-            </div>
-            <div style="margin-bottom: 1rem;">
-              <label style="display: block; font-size: 0.82rem; font-weight: 600; color: #1e293b; margin-bottom: 0.35rem;">6-Digit Confirmation Code *</label>
-              <input type="text" id="uni-auth-otp-code" maxlength="6" inputmode="numeric" required placeholder="123456" style="width: 100%; padding: 0.78rem; border: 2px solid #2563eb; border-radius: 8px; font-size: 1.35rem; font-weight: 700; letter-spacing: 6px; text-align: center; font-family: monospace;">
-            </div>
-            <button type="submit" id="uni-auth-verify-btn" class="btn btn-primary" style="width: 100%; padding: 0.78rem; font-weight: 600; font-size: 0.92rem; border-radius: 10px; margin-bottom: 0.75rem;">
-              Verify &amp; Confirm Account
-            </button>
-            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem;">
-              <button type="button" onclick="window.UniAuth.resetToCredentialsStep()" style="background: none; border: none; color: #64748b; cursor: pointer; font-weight: 500;">&larr; Back</button>
-              <button type="button" onclick="window.UniAuth.resendConfirmationEmail()" style="background: none; border: none; color: #2563eb; cursor: pointer; font-weight: 600;">Resend Confirmation Email</button>
-            </div>
-          </form>
         </div>
       </div>
     `;
@@ -220,86 +187,19 @@
     alertEl.textContent = msg;
   }
 
-  function switchTab(mode) {
-    currentAuthMode = mode === 'signup' ? 'signup' : 'signin';
-    awaitingConfirmation = false;
-    setAlert(null);
-
-    const tabSignIn = document.getElementById('uni-tab-signin');
-    const tabSignUp = document.getElementById('uni-tab-signup');
-    const nameGroup = document.getElementById('uni-auth-name-group');
-    const emailForm = document.getElementById('uni-auth-email-form');
-    const otpForm = document.getElementById('uni-auth-otp-form');
-    const tabsBar = document.getElementById('uni-auth-tabs');
-    const googleSec = document.getElementById('uni-google-section');
-    const submitBtn = document.getElementById('uni-auth-submit-btn');
-
-    if (tabsBar) tabsBar.style.display = 'grid';
-    if (googleSec) googleSec.style.display = 'block';
-    if (emailForm) emailForm.style.display = 'block';
-    if (otpForm) otpForm.style.display = 'none';
-
-    if (tabSignIn && tabSignUp) {
-      if (currentAuthMode === 'signin') {
-        tabSignIn.style.background = '#ffffff';
-        tabSignIn.style.color = '#0f172a';
-        tabSignIn.style.boxShadow = '0 2px 5px rgba(0,0,0,0.06)';
-        tabSignUp.style.background = 'transparent';
-        tabSignUp.style.color = '#64748b';
-        tabSignUp.style.boxShadow = 'none';
-      } else {
-        tabSignUp.style.background = '#ffffff';
-        tabSignUp.style.color = '#0f172a';
-        tabSignUp.style.boxShadow = '0 2px 5px rgba(0,0,0,0.06)';
-        tabSignIn.style.background = 'transparent';
-        tabSignIn.style.color = '#64748b';
-        tabSignIn.style.boxShadow = 'none';
-      }
-    }
-
-    if (nameGroup) {
-      nameGroup.style.display = currentAuthMode === 'signup' ? 'block' : 'none';
-    }
-    if (submitBtn) {
-      submitBtn.textContent =
-        currentAuthMode === 'signup' ? 'Create Account' : 'Sign In';
-    }
-  }
-
-  function resetToCredentialsStep() {
-    switchTab(currentAuthMode);
-  }
-
-  function showConfirmationStep(email, noticeMsg, isWarning = false) {
-    awaitingConfirmation = true;
-    const emailForm = document.getElementById('uni-auth-email-form');
-    const otpForm = document.getElementById('uni-auth-otp-form');
-    const tabsBar = document.getElementById('uni-auth-tabs');
-    const googleSec = document.getElementById('uni-google-section');
-    const targetSpan = document.getElementById('uni-otp-target-email');
-    const otpInput = document.getElementById('uni-auth-otp-code');
-
-    if (targetSpan) targetSpan.textContent = email;
-    if (otpInput) otpInput.value = '';
-    if (tabsBar) tabsBar.style.display = 'none';
-    if (googleSec) googleSec.style.display = 'none';
-    if (emailForm) emailForm.style.display = 'none';
-    if (otpForm) otpForm.style.display = 'block';
-
-    if (noticeMsg) {
-      setAlert(noticeMsg, isWarning ? 'error' : 'success');
-    }
-  }
-
-  function openAuthModal(mode = 'signin', options = {}) {
+  function openAuthModal(_mode = 'signin', options = {}) {
     ensureAuthModalInjected();
+    setAlert(null);
     const modal = document.getElementById('uni-auth-modal');
     const reasonEl = document.getElementById('uni-auth-reason');
+    const reasonText =
+      typeof options === 'string'
+        ? options
+        : options?.reason ||
+          'Continue with your Google account to access UniNest student housing and marketplace features.';
     if (reasonEl) {
-      reasonEl.textContent =
-        options.reason || 'Sign in or create an account to continue.';
+      reasonEl.textContent = reasonText;
     }
-    switchTab(mode);
     if (modal) {
       modal.classList.add('open');
       document.body.style.overflow = 'hidden';
@@ -316,211 +216,44 @@
 
   async function signInWithGoogle() {
     setAlert(null);
+    const btn = document.getElementById('uni-google-btn');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Redirecting to Google...';
+    }
     try {
+      const nextUrl = window.location.pathname + window.location.search + window.location.hash;
       if (window.supabaseClient && window.supabaseClient.auth) {
         const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(
-          window.location.pathname + window.location.search
+          nextUrl
         )}`;
         const { error } = await window.supabaseClient.auth.signInWithOAuth({
           provider: 'google',
           options: { redirectTo },
         });
-        if (error) setAlert(error.message);
+        if (error) {
+          setAlert(error.message);
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Continue with Google';
+          }
+        }
         return;
       }
-      window.location.href = `/login?next=${encodeURIComponent(
-        window.location.pathname + window.location.search
-      )}`;
+      window.location.href = `/login?next=${encodeURIComponent(nextUrl)}`;
     } catch (err) {
       setAlert(err.message || 'Could not start Google Sign-In.');
-    }
-  }
-
-  async function handleEmailPasswordSubmit(event) {
-    if (event) event.preventDefault();
-    setAlert(null);
-
-    const emailInput = document.getElementById('uni-auth-email');
-    const pwdInput = document.getElementById('uni-auth-password');
-    const nameInput = document.getElementById('uni-auth-name');
-    const submitBtn = document.getElementById('uni-auth-submit-btn');
-
-    const cleanEmail = (emailInput?.value || '').trim().toLowerCase();
-    const password = pwdInput?.value || '';
-    const fullName = (nameInput?.value || '').trim();
-
-    if (!cleanEmail || !cleanEmail.includes('@')) {
-      setAlert('Please enter a valid email address.');
-      return;
-    }
-
-    if (!password || password.length < 6) {
-      setAlert('Password must be at least 6 characters long.');
-      return;
-    }
-
-    if (submitBtn) {
-      submitBtn.disabled = true;
-      submitBtn.textContent =
-        currentAuthMode === 'signup'
-          ? 'Creating Account & Sending Email...'
-          : 'Signing In...';
-    }
-
-    try {
-      const res = await fetch('/api/auth/otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: currentAuthMode === 'signup' ? 'signup' : 'signin',
-          email: cleanEmail,
-          password,
-          fullName,
-          origin: window.location.origin,
-          next: window.location.pathname + window.location.search,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (data.needsConfirmation || data.isEmailUnconfirmed) {
-        showConfirmationStep(
-          cleanEmail,
-          data.isEmailUnconfirmed
-            ? data.error
-            : data.message ||
-                `Confirmation email sent to ${cleanEmail}! Enter the 6-digit code below.`,
-          !!data.isEmailUnconfirmed
-        );
-        return;
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Continue with Google';
       }
-
-      if (!res.ok || data.error) {
-        setAlert(data.error || 'Authentication failed.');
-        return;
-      }
-
-      if (data.success && data.user) {
-        setStoredUser(data.user);
-        closeAuthModal();
-        showToast('Signed in successfully!', 'success');
-
-        if (typeof pendingAction === 'function') {
-          const cb = pendingAction;
-          pendingAction = null;
-          setTimeout(() => cb(), 150);
-        }
-      }
-    } catch (err) {
-      setAlert(err.message || 'Unable to process request. Please try again.');
-    } finally {
-      if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.textContent =
-          currentAuthMode === 'signup' ? 'Create Account' : 'Sign In';
-      }
-    }
-  }
-
-  async function handleVerifyConfirmationSubmit(event) {
-    if (event) event.preventDefault();
-    setAlert(null);
-
-    const emailInput = document.getElementById('uni-auth-email');
-    const nameInput = document.getElementById('uni-auth-name');
-    const codeInput = document.getElementById('uni-auth-otp-code');
-    const verifyBtn = document.getElementById('uni-auth-verify-btn');
-
-    const cleanEmail = (emailInput?.value || '').trim().toLowerCase();
-    const cleanCode = (codeInput?.value || '').trim().replace(/\D/g, '');
-    const customName = (nameInput?.value || '').trim();
-
-    if (!cleanCode || cleanCode.length < 6) {
-      setAlert('Please enter the 6-digit confirmation code from your email.');
-      return;
-    }
-
-    if (verifyBtn) {
-      verifyBtn.disabled = true;
-      verifyBtn.textContent = 'Verifying...';
-    }
-
-    try {
-      const res = await fetch('/api/auth/otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'verify',
-          email: cleanEmail,
-          token: cleanCode,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        setAlert(data.error || 'Invalid or expired confirmation code.');
-        return;
-      }
-
-      const verifiedUser = data.user || {
-        id: 'user_' + Date.now(),
-        email: cleanEmail,
-        name: customName || cleanEmail.split('@')[0],
-      };
-
-      setStoredUser(verifiedUser);
-      closeAuthModal();
-      showToast('Email confirmed! Welcome to UniNest.', 'success');
-
-      if (typeof pendingAction === 'function') {
-        const cb = pendingAction;
-        pendingAction = null;
-        setTimeout(() => cb(), 150);
-      }
-    } catch (err) {
-      setAlert(err.message || 'Verification failed.');
-    } finally {
-      if (verifyBtn) {
-        verifyBtn.disabled = false;
-        verifyBtn.textContent = 'Verify & Confirm Account';
-      }
-    }
-  }
-
-  async function resendConfirmationEmail() {
-    const emailInput = document.getElementById('uni-auth-email');
-    const cleanEmail = (emailInput?.value || '').trim().toLowerCase();
-    if (!cleanEmail) return;
-
-    try {
-      const res = await fetch('/api/auth/otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'resend',
-          email: cleanEmail,
-          origin: window.location.origin,
-          next: window.location.pathname + window.location.search,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        setAlert(data.error || 'Failed to resend confirmation email.');
-      } else {
-        setAlert(
-          data.message || `New confirmation email sent to ${cleanEmail}!`,
-          'success'
-        );
-      }
-    } catch (err) {
-      setAlert(err.message || 'Could not resend confirmation email.');
     }
   }
 
   function requireAuth(actionCallback, options = {}) {
     if (isAuthenticated()) {
       if (typeof actionCallback === 'function') {
-        actionCallback();
+        actionCallback(currentUser);
       }
       return true;
     }
@@ -551,31 +284,128 @@
         `;
       } else {
         slot.innerHTML = `
-          <button type="button" class="btn btn-primary" onclick="window.UniAuth.openAuthModal('signin')" style="padding: 0.45rem 1rem; font-size: 0.85rem;">Sign In</button>
+          <button type="button" class="btn btn-primary" onclick="window.UniAuth.openAuthModal('signin')" style="padding: 0.45rem 1rem; font-size: 0.85rem;">Sign in with Google</button>
         `;
       }
     });
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  function renderNavActions() {
+    const navActionsContainers = document.querySelectorAll('.nav-actions');
+    if (!navActionsContainers.length) return;
+
+    const user = getStoredUser();
+    const emailName = user?.name || (user?.email ? user.email.split('@')[0] : 'Student');
+    const initial = emailName.charAt(0).toUpperCase();
+    const isMarketplacePage =
+      document.body.classList.contains('page-marketplace') ||
+      window.location.pathname.includes('marketplace.html');
+
+    navActionsContainers.forEach((container) => {
+      let html = '';
+
+      if (isMarketplacePage) {
+        if (user) {
+          html = `
+            <div class="user-nav-badge" style="display: inline-flex; align-items: center; gap: 0.5rem; margin-right: 0.5rem; background: #f1f5f9; padding: 0.35rem 0.75rem; border-radius: 9999px;">
+              <span style="width: 24px; height: 24px; border-radius: 50%; background: #2563eb; color: #fff; font-size: 0.75rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center;">${initial}</span>
+              <span style="font-weight: 600; font-size: 0.84rem; color: #0f172a;">${emailName}</span>
+            </div>
+            <button type="button" class="btn btn-secondary" onclick="UniMarketplace.openStatusTrackerModal()" style="font-size: 0.85rem; padding: 0.45rem 0.85rem; margin-right: 0.25rem;">Track Deal</button>
+            <button type="button" class="btn btn-secondary" onclick="UniMarketplace.openPostModal()" style="margin-right: 0.25rem; font-size: 0.85rem; padding: 0.45rem 0.85rem;">+ List Item</button>
+            <button type="button" class="btn btn-primary" onclick="UniMarketplace.openAgentPortal()" style="font-size: 0.85rem; padding: 0.45rem 0.85rem; margin-right: 0.25rem;">Agent Portal</button>
+            <button type="button" class="btn btn-secondary" onclick="UniAuth.signOut()" style="padding: 0.45rem 0.75rem; font-size: 0.8rem;">Logout</button>
+          `;
+        } else {
+          html = `
+            <button type="button" class="btn btn-secondary" onclick="UniMarketplace.openPostModal()" style="margin-right: 0.25rem; font-size: 0.85rem; padding: 0.45rem 0.85rem;">+ List Item</button>
+            <button type="button" class="btn btn-secondary" onclick="UniMarketplace.openAgentPortal()" style="font-size: 0.85rem; padding: 0.45rem 0.85rem; margin-right: 0.35rem;">Agent Portal</button>
+            <button type="button" class="btn btn-primary" onclick="UniAuth.openAuthModal('signin')" style="padding: 0.45rem 0.95rem; font-size: 0.85rem; font-weight: 600;">Sign in with Google</button>
+          `;
+        }
+      } else {
+        if (user) {
+          html = `
+            <div class="user-nav-badge" style="display: inline-flex; align-items: center; gap: 0.5rem; margin-right: 0.5rem; background: #f1f5f9; padding: 0.35rem 0.75rem; border-radius: 9999px;">
+              <span style="width: 24px; height: 24px; border-radius: 50%; background: #2563eb; color: #fff; font-size: 0.75rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center;">${initial}</span>
+              <span style="font-weight: 600; font-size: 0.84rem; color: #0f172a;">${emailName}</span>
+            </div>
+            <a href="marketplace.html#sell" class="btn btn-secondary" style="font-size: 0.82rem; padding: 0.45rem 0.75rem; margin-right: 0.25rem;">+ Sell Item</a>
+            <a href="/post-property" class="btn btn-secondary" style="font-size: 0.82rem; padding: 0.45rem 0.75rem; margin-right: 0.25rem;">+ Post House</a>
+            <button type="button" class="btn btn-secondary" onclick="UniAuth.signOut()" style="padding: 0.45rem 0.75rem; font-size: 0.8rem;">Logout</button>
+          `;
+        } else {
+          html = `
+            <a href="marketplace.html#sell" class="btn btn-secondary" style="margin-right: 0.25rem; font-size: 0.85rem; padding: 0.45rem 0.85rem;">+ Sell Item</a>
+            <button type="button" class="btn btn-primary" onclick="UniAuth.openAuthModal('signin')" style="font-size: 0.85rem; padding: 0.45rem 0.95rem; font-weight: 600;">Sign in with Google</button>
+          `;
+        }
+      }
+
+      container.innerHTML = html;
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', async () => {
     currentUser = getStoredUser();
     updateNavbarAuthUI();
+    renderNavActions();
+
+    // Check URL hash fragment for Google OAuth implicit flow tokens
+    if (window.location.hash && window.location.hash.includes('access_token')) {
+      try {
+        const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+        const accessToken = hashParams.get('access_token');
+        const refreshToken = hashParams.get('refresh_token');
+        if (accessToken && refreshToken && window.supabaseClient) {
+          const { data, error } = await window.supabaseClient.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+          if (!error && data?.user) {
+            setStoredUser(data.user);
+            showToast('Signed in with Google!', 'success');
+            if (window.history && window.history.replaceState) {
+              window.history.replaceState(null, '', window.location.pathname + window.location.search);
+            }
+          }
+        }
+      } catch (e) {}
+    }
+
+    // Listen to Supabase session changes if available
+    try {
+      if (window.supabaseClient && window.supabaseClient.auth) {
+        const { data } = await window.supabaseClient.auth.getSession();
+        if (data?.session?.user) {
+          setStoredUser(data.session.user);
+        }
+        window.supabaseClient.auth.onAuthStateChange((_event, session) => {
+          if (session?.user) {
+            setStoredUser(session.user);
+            if (typeof pendingAction === 'function') {
+              const cb = pendingAction;
+              pendingAction = null;
+              setTimeout(() => cb(currentUser), 150);
+            }
+          }
+        });
+      }
+    } catch (e) {}
   });
 
   window.UniAuth = {
     getUser: getStoredUser,
     getStoredUser,
+    saveClientSession: setStoredUser,
     isAuthenticated,
     requireAuth,
     openAuthModal,
     closeAuthModal,
-    switchTab,
-    resetToCredentialsStep,
     signInWithGoogle,
-    handleEmailPasswordSubmit,
-    handleVerifyConfirmationSubmit,
-    resendConfirmationEmail,
     signOut,
     showToast,
+    renderNavActions,
+    updateNavbarAuthUI,
   };
 })();
