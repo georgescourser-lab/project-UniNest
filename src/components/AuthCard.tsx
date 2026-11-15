@@ -2,7 +2,10 @@
 
 import React, { useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
+import { createClient } from '@/utils/supabase/client';
 import { getGoogleOAuthUrl } from '@/app/actions/authActions';
+import { useAuth } from '@/context/AuthContext';
 
 interface AuthCardProps {
   initialTab?: 'signin' | 'signup';
@@ -11,6 +14,7 @@ interface AuthCardProps {
 export default function AuthCard({ initialTab = 'signin' }: AuthCardProps) {
   const searchParams = useSearchParams();
   const nextParam = searchParams.get('next') || '/search';
+  const { user, isVerifiedAgent, logout } = useAuth();
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -20,6 +24,32 @@ export default function AuthCard({ initialTab = 'signin' }: AuthCardProps) {
     setLoading(true);
     try {
       const origin = window.location.origin;
+      try {
+        localStorage.setItem('uninest_auth_next', nextParam);
+        document.cookie = `uninest_auth_next=${encodeURIComponent(nextParam)}; path=/; max-age=900; SameSite=Lax`;
+      } catch {}
+
+      // Use browser Supabase client first (implicit flow, keeps session & verifier in browser storage)
+      try {
+        const supabase = createClient();
+        const redirectTo = `${origin}/auth/callback?next=${encodeURIComponent(nextParam)}`;
+        const { data, error: oauthErr } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo,
+            queryParams: {
+              prompt: 'select_account',
+            },
+          },
+        });
+        if (!oauthErr && data?.url) {
+          window.location.href = data.url;
+          return;
+        }
+      } catch {
+        // Fallback to server action below
+      }
+
       const res = await getGoogleOAuthUrl(origin, nextParam);
       if (res.error) {
         setError(res.error);
@@ -77,6 +107,45 @@ export default function AuthCard({ initialTab = 'signin' }: AuthCardProps) {
           Use your Google account to securely browse student housing, book verified agent viewings, and trade on the campus marketplace.
         </p>
       </div>
+
+      {/* Already Signed-In Notice */}
+      {user && (
+        <div
+          style={{
+            background: '#f0fdf4',
+            border: '1px solid #bbf7d0',
+            borderRadius: '12px',
+            padding: '1rem',
+            marginBottom: '1.25rem',
+            textAlign: 'left',
+          }}
+        >
+          <div style={{ fontSize: '0.85rem', color: '#166534', fontWeight: 700, marginBottom: '0.25rem' }}>
+            ✓ Signed in as {user.name || user.email}
+            {isVerifiedAgent ? ' (Verified Agent)' : ' (Student / Client)'}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: '#15803d', marginBottom: '0.75rem' }}>
+            {user.email}
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <Link
+              href={nextParam || '/search'}
+              className="btn btn-primary"
+              style={{ padding: '0.45rem 0.9rem', fontSize: '0.82rem', textDecoration: 'none' }}
+            >
+              Continue to {nextParam === '/post-property' ? 'Post House' : 'UniNest'} &rarr;
+            </Link>
+            <button
+              type="button"
+              onClick={() => logout()}
+              className="btn btn-secondary"
+              style={{ padding: '0.45rem 0.9rem', fontSize: '0.82rem' }}
+            >
+              Switch Google Account
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Error Alert */}
       {error && (

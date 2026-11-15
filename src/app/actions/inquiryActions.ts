@@ -1,7 +1,7 @@
 'use server'
 
 import { createClient } from '@/utils/supabase/server'
-import { getCurrentUser } from '@/app/actions/authActions'
+import { getCurrentUser, syncUserSession } from '@/app/actions/authActions'
 import { revalidatePath } from 'next/cache'
 
 export type InquiryState = {
@@ -13,7 +13,27 @@ export type InquiryState = {
 
 // Submits viewing/inspection inquiry - Visible to authorized agents only
 export async function submitPropertyInquiry(prevState: InquiryState | null, formData: FormData): Promise<InquiryState> {
-  const user = await getCurrentUser()
+  let user = await getCurrentUser()
+
+  // Fallback to authenticated client session fields if cookie was just established on client
+  if (!user) {
+    const authEmail = (formData.get('authenticatedUserEmail') as string)?.trim().toLowerCase()
+    const authId = (formData.get('authenticatedUserId') as string)?.trim()
+    const authName = (formData.get('authenticatedUserName') as string)?.trim()
+    if (authEmail && authEmail.includes('@')) {
+      user = {
+        id: authId || `usr_${Date.now()}`,
+        email: authEmail,
+        name: authName || authEmail.split('@')[0],
+      } as any
+      await syncUserSession({
+        id: user.id,
+        email: user.email,
+        name: user.name,
+      })
+    }
+  }
+
   if (!user) {
     return { error: 'Please sign in first to schedule an accompanied property viewing.', success: false }
   }

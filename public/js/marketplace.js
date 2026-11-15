@@ -297,7 +297,10 @@
     renderFiltered();
 
     const urlParams = new URLSearchParams(window.location.search);
-    if (window.location.hash === '#sell' || urlParams.get('action') === 'sell') {
+    const inspectId = urlParams.get('inspect');
+    if (inspectId) {
+      setTimeout(() => openInquiryModal(inspectId), 300);
+    } else if (window.location.hash === '#sell' || urlParams.get('action') === 'sell') {
       setTimeout(openPostModal, 300);
     } else if (window.location.hash === '#agent-portal' || urlParams.get('portal') === 'agent') {
       setTimeout(openAgentPortal, 300);
@@ -395,6 +398,13 @@
     const form = document.getElementById('inquiry-form');
     if (form) {
       form.reset();
+      const user = window.UniAuth ? window.UniAuth.getUser() : null;
+      if (user) {
+        const nameInput = document.getElementById('inq-client-name');
+        const emailInput = document.getElementById('inq-client-email');
+        if (nameInput && user.name) nameInput.value = user.name;
+        if (emailInput && user.email) emailInput.value = user.email;
+      }
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
       const dateInput = document.getElementById('inq-date');
@@ -517,9 +527,11 @@
     const modal = document.getElementById('post-item-modal');
     if (modal) {
       const user = window.UniAuth ? window.UniAuth.getUser() : null;
-      if (user && user.email) {
-        const emailInput = document.getElementById('post-owner-email');
-        if (emailInput && !emailInput.value) emailInput.value = user.email;
+      if (user) {
+        const emailInput = document.getElementById('owner-email') || document.getElementById('post-owner-email');
+        const nameInput = document.getElementById('owner-name');
+        if (emailInput && !emailInput.value && user.email) emailInput.value = user.email;
+        if (nameInput && !nameInput.value && user.name) nameInput.value = user.name;
       }
       modal.classList.add('open');
       document.body.style.overflow = 'hidden';

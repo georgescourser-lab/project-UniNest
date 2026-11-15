@@ -70,18 +70,7 @@ export async function clearUserSession() {
 }
 
 export async function getCurrentUser() {
-  // 1. Try Supabase server client
-  try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
-      return user
-    }
-  } catch (e) {
-    // Continue to fallback cookie
-  }
-
-  // 2. Fallback to unified persistent cookie
+  // 1. Check unified persistent cookie first (synced across Google OAuth & SSR)
   try {
     const cookieStore = await cookies()
     const rawCookie = cookieStore.get(SESSION_COOKIE_NAME)?.value || cookieStore.get(CLIENT_COOKIE_NAME)?.value
@@ -91,18 +80,56 @@ export async function getCurrentUser() {
         return {
           id: parsed.id,
           email: parsed.email,
+          name: parsed.name || parsed.email.split('@')[0],
           user_metadata: {
-            full_name: parsed.name,
-            display_name: parsed.name
+            full_name: parsed.name || parsed.email.split('@')[0],
+            display_name: parsed.name || parsed.email.split('@')[0]
           }
         } as any
       }
     }
   } catch (e) {
-    // Parse error
+    // Parse error, continue to Supabase server client
+  }
+
+  // 2. Fallback to Supabase server client
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      return user
+    }
+  } catch (e) {
+    // Ignore
   }
 
   return null
+}
+
+export async function exchangeOAuthCodeOnServer(code: string) {
+  try {
+    const supabase = await createClient()
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+    if (error) {
+      return { error: error.message }
+    }
+    if (data?.user) {
+      const userPayload = {
+        id: data.user.id,
+        email: data.user.email || '',
+        name:
+          data.user.user_metadata?.full_name ||
+          data.user.user_metadata?.name ||
+          data.user.email?.split('@')[0] ||
+          'Student',
+      }
+      await setSessionCookie(userPayload)
+      return { success: true, user: userPayload }
+    }
+    return { error: 'No user returned from OAuth code exchange.' }
+  } catch (err: any) {
+    return { error: err?.message || 'Server OAuth code exchange failed.' }
+  }
 }
 
 export async function logout() {

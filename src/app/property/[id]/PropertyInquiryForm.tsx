@@ -2,10 +2,8 @@
 
 import { useActionState, useState, useEffect } from 'react'
 import { submitPropertyInquiry, InquiryState } from '@/app/actions/inquiryActions'
-import { getCurrentUser } from '@/app/actions/authActions'
-import { useAuth } from '@/context/AuthContext'
-
-import Link from 'next/link'
+import { getCurrentUser, syncUserSession } from '@/app/actions/authActions'
+import { useAuth, getStoredUser } from '@/context/AuthContext'
 
 export default function PropertyInquiryForm({ 
   propertyId, 
@@ -23,25 +21,89 @@ export default function PropertyInquiryForm({
 
   const { user: authUser, requireAuth } = useAuth()
   const [currentUser, setCurrentUser] = useState<any>(user || authUser)
+  const [clientName, setClientName] = useState<string>(
+    user?.user_metadata?.full_name || user?.name || authUser?.name || ''
+  )
+  const [clientEmail, setClientEmail] = useState<string>(
+    user?.email || authUser?.email || ''
+  )
+  const [clientPhone, setClientPhone] = useState<string>('')
+  const [preferredDate, setPreferredDate] = useState<string>(
+    new Date(Date.now() + 86400000).toISOString().split('T')[0]
+  )
+  const [preferredTime, setPreferredTime] = useState<string>('Morning (9:00 AM - 12:00 PM)')
+  const [notes, setNotes] = useState<string>('')
 
   useEffect(() => {
-    if (authUser) {
-      setCurrentUser(authUser)
-    } else if (!currentUser) {
+    const resolved = authUser || getStoredUser() || user
+    if (resolved) {
+      setCurrentUser(resolved)
+      const nameVal =
+        resolved.name ||
+        resolved.user_metadata?.full_name ||
+        resolved.user_metadata?.display_name ||
+        (resolved.email ? resolved.email.split('@')[0] : '')
+      if (nameVal) setClientName((prev) => prev || nameVal)
+      if (resolved.email) setClientEmail((prev) => prev || resolved.email)
+      syncUserSession({
+        id: resolved.id,
+        email: resolved.email,
+        name: nameVal,
+      }).catch(() => {})
+    } else {
       getCurrentUser().then((u) => {
-        if (u) setCurrentUser(u)
+        if (u) {
+          setCurrentUser(u)
+          const nameVal = u.user_metadata?.full_name || u.name || (u.email ? u.email.split('@')[0] : '')
+          if (nameVal) setClientName((prev) => prev || nameVal)
+          if (u.email) setClientEmail((prev) => prev || u.email)
+        }
       }).catch(() => {})
     }
-  }, [authUser, currentUser])
+  }, [authUser, user])
+
+  // Sync successful property inquiry into localStorage so client can track it & verified agents see it in Agent Portal
+  useEffect(() => {
+    if (state?.success && state?.refCode) {
+      try {
+        const STORAGE_KEY_INQUIRIES = 'uninest_agent_inquiries'
+        const stored = localStorage.getItem(STORAGE_KEY_INQUIRIES)
+        const list = stored ? JSON.parse(stored) : []
+        if (!list.some((i: any) => i.refCode === state.refCode)) {
+          list.unshift({
+            refCode: state.refCode,
+            createdAt: new Date().toISOString(),
+            itemId: propertyId,
+            itemTitle: propertyTitle || 'Student Property Viewing',
+            itemPrice: 'Property Viewing',
+            campus: 'Campus Area',
+            clientName,
+            clientPhone,
+            clientEmail,
+            preferredDate,
+            preferredTime,
+            preferredHub: 'On-Site Accompanied Viewing',
+            notes,
+            status: 'Pending Agent Review',
+            agentName: 'Authorized UniNest Agent',
+            agentNotes: 'Property viewing inquiry received.',
+            dealUpdate: state.message || `Your appointment request (${state.refCode}) is registered with the supervising agent.`,
+          })
+          localStorage.setItem(STORAGE_KEY_INQUIRIES, JSON.stringify(list))
+        }
+      } catch (e) {}
+    }
+  }, [state, propertyId, propertyTitle, clientName, clientPhone, clientEmail, preferredDate, preferredTime, notes])
 
   const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    if (!currentUser && !authUser) {
+    const active = currentUser || authUser || getStoredUser()
+    if (!active) {
       e.preventDefault()
       await requireAuth(() => {}, `/property/${propertyId}`)
     }
   }
 
-
+  const activeUser = currentUser || authUser
 
   return (
     <div className="inquiry-form-card" style={{ marginTop: '1.5rem', background: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '1.5rem', boxShadow: 'var(--shadow-sm)' }}>
@@ -76,6 +138,9 @@ export default function PropertyInquiryForm({
       {!state?.success && (
         <form action={formAction} onSubmit={handleFormSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
           <input type="hidden" name="propertyId" value={propertyId} />
+          <input type="hidden" name="authenticatedUserId" value={activeUser?.id || ''} />
+          <input type="hidden" name="authenticatedUserEmail" value={activeUser?.email || ''} />
+          <input type="hidden" name="authenticatedUserName" value={activeUser?.name || activeUser?.user_metadata?.full_name || ''} />
 
           <div>
             <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#1e293b', marginBottom: '0.3rem' }}>
@@ -85,8 +150,8 @@ export default function PropertyInquiryForm({
               type="text"
               name="clientName"
               required
-              defaultValue={currentUser?.user_metadata?.full_name || currentUser?.user_metadata?.display_name || ''}
-              placeholder="e.g. Cynthia Mwangi"
+              value={clientName}
+              onChange={(e) => setClientName(e.target.value)}
               style={{ width: '100%', padding: '0.65rem 0.85rem', border: '1.5px solid #cbd5e1', borderRadius: '8px', fontSize: '0.9rem' }}
             />
           </div>
@@ -100,7 +165,8 @@ export default function PropertyInquiryForm({
                 type="tel"
                 name="clientPhone"
                 required
-                placeholder="0712 345 678"
+                value={clientPhone}
+                onChange={(e) => setClientPhone(e.target.value)}
                 style={{ width: '100%', padding: '0.65rem 0.85rem', border: '1.5px solid #cbd5e1', borderRadius: '8px', fontSize: '0.9rem' }}
               />
             </div>
@@ -111,8 +177,8 @@ export default function PropertyInquiryForm({
               <input
                 type="email"
                 name="clientEmail"
-                defaultValue={currentUser?.email || user?.email || ''}
-                placeholder="student@campus.ac.ke"
+                value={clientEmail}
+                onChange={(e) => setClientEmail(e.target.value)}
                 style={{ width: '100%', padding: '0.65rem 0.85rem', border: '1.5px solid #cbd5e1', borderRadius: '8px', fontSize: '0.9rem' }}
               />
             </div>
@@ -127,7 +193,8 @@ export default function PropertyInquiryForm({
                 type="date"
                 name="preferredDate"
                 required
-                defaultValue={new Date(Date.now() + 86400000).toISOString().split('T')[0]}
+                value={preferredDate}
+                onChange={(e) => setPreferredDate(e.target.value)}
                 style={{ width: '100%', padding: '0.65rem 0.85rem', border: '1.5px solid #cbd5e1', borderRadius: '8px', fontSize: '0.9rem' }}
               />
             </div>
@@ -137,6 +204,8 @@ export default function PropertyInquiryForm({
               </label>
               <select
                 name="preferredTime"
+                value={preferredTime}
+                onChange={(e) => setPreferredTime(e.target.value)}
                 style={{ width: '100%', padding: '0.65rem 0.85rem', border: '1.5px solid #cbd5e1', borderRadius: '8px', fontSize: '0.9rem' }}
               >
                 <option value="Morning (9:00 AM - 12:00 PM)">Morning (9 AM - 12 PM)</option>
@@ -153,7 +222,8 @@ export default function PropertyInquiryForm({
             <textarea
               name="notes"
               rows={2}
-              placeholder="e.g. Planning to move in next semester; need viewing with roommate."
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
               style={{ width: '100%', padding: '0.65rem 0.85rem', border: '1.5px solid #cbd5e1', borderRadius: '8px', fontSize: '0.9rem', resize: 'vertical' }}
             />
           </div>

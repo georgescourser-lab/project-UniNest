@@ -1,13 +1,12 @@
 import Link from 'next/link';
 import NavLinks from './NavLinks';
-import { getCurrentUser, logout } from '@/app/actions/authActions';
+import { getCurrentUser, isVerifiedAgentEmail } from '@/app/actions/authActions';
 import MobileMenuCloser from './MobileMenuCloser';
+import SiteNavClient from './SiteNavClient';
 
 export default async function SiteNav() {
   const sessionUser = await getCurrentUser();
-  
-  const adminEmails = process.env.ADMIN_EMAILS?.split(',') || [];
-  const isAdmin = sessionUser ? adminEmails.includes(sessionUser.email || '') : false;
+  const isVerifiedAgent = await isVerifiedAgentEmail(sessionUser?.email);
 
   return (
     <nav className="navbar">
@@ -27,25 +26,19 @@ export default async function SiteNav() {
           </svg>
         </label>
         <div id="site-navigation" className="nav-menu">
-          <NavLinks isLoggedIn={!!sessionUser} isAdmin={isAdmin} />
-          <div className="nav-actions">
-            <a href="/marketplace.html#sell" className="btn-nav-outline">+ List Item</a>
-            <a href="/marketplace.html?portal=agent" className="btn-nav-outline">Agent Portal</a>
-            {sessionUser ? (
-              <>
-                <Link href="/profile" className="btn-nav-outline">
-                  {sessionUser.email?.split('@')[0] ?? 'Account'}
-                </Link>
-                <form action={logout} style={{ display: 'inline', margin: 0 }}>
-                  <button className="btn-nav-solid" type="submit">
-                    Sign Out
-                  </button>
-                </form>
-              </>
-            ) : (
-              <Link href="/login" className="btn-nav-solid">Sign in with Google</Link>
-            )}
-          </div>
+          <NavLinks isLoggedIn={!!sessionUser} isAdmin={isVerifiedAgent} />
+          <SiteNavClient
+            serverUser={
+              sessionUser
+                ? {
+                    id: sessionUser.id,
+                    email: sessionUser.email,
+                    name: sessionUser.user_metadata?.full_name || sessionUser.email?.split('@')[0],
+                  }
+                : null
+            }
+            serverIsVerifiedAgent={isVerifiedAgent}
+          />
         </div>
       </div>
     </nav>

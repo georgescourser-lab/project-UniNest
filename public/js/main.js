@@ -341,9 +341,11 @@ window.openPropertyViewingModal = function() {
     const modal = document.getElementById('property-viewing-modal');
     if (modal) {
       const user = window.UniAuth.getUser();
-      if (user && user.email) {
+      if (user) {
+        const nameInput = document.getElementById('prop-viewing-name');
         const emailInput = document.getElementById('prop-viewing-email');
-        if (emailInput && !emailInput.value) emailInput.value = user.email;
+        if (nameInput && !nameInput.value && user.name) nameInput.value = user.name;
+        if (emailInput && !emailInput.value && user.email) emailInput.value = user.email;
       }
       modal.classList.add('open');
       document.body.style.overflow = 'hidden';
@@ -368,10 +370,39 @@ window.handlePropertyViewingSubmit = function(event) {
     return;
   }
 
-  const name = document.getElementById('prop-viewing-name')?.value;
-  const date = document.getElementById('prop-viewing-date')?.value;
-  const time = document.getElementById('prop-viewing-time')?.value;
+  const name = document.getElementById('prop-viewing-name')?.value || '';
+  const phone = document.getElementById('prop-viewing-phone')?.value || '';
+  const email = document.getElementById('prop-viewing-email')?.value || '';
+  const date = document.getElementById('prop-viewing-date')?.value || '';
+  const time = document.getElementById('prop-viewing-time')?.value || '';
+  const notes = document.getElementById('prop-viewing-notes')?.value || '';
+  const propTitle = document.getElementById('prop-title')?.textContent || 'Student Property Viewing';
   const refCode = `UN-PROP-${Math.floor(10000 + Math.random() * 90000)}`;
+
+  try {
+    const stored = localStorage.getItem('uninest_agent_inquiries');
+    const list = stored ? JSON.parse(stored) : [];
+    list.unshift({
+      refCode,
+      createdAt: new Date().toISOString(),
+      itemId: 0,
+      itemTitle: propTitle,
+      itemPrice: 'Property Viewing',
+      campus: 'Campus Area',
+      clientName: name,
+      clientPhone: phone,
+      clientEmail: email,
+      preferredDate: date,
+      preferredTime: time,
+      preferredHub: 'On-Site Accompanied Viewing',
+      notes,
+      status: 'Pending Agent Review',
+      agentName: 'Authorized UniNest Agent',
+      agentNotes: 'Property viewing inquiry received.',
+      dealUpdate: `Your appointment request (${refCode}) is registered with the supervising agent.`,
+    });
+    localStorage.setItem('uninest_agent_inquiries', JSON.stringify(list));
+  } catch (e) {}
 
   window.closePropertyViewingModal();
   if (event.target && event.target.reset) {

@@ -8,46 +8,148 @@
   const STORAGE_KEY_USER = 'uninest_user';
   const CLIENT_COOKIE_NAME = 'uninest_user_client';
   const SESSION_COOKIE_NAME = 'uninest_user_session';
+  const VERIFIED_AGENT_EMAILS = [
+    'georgescourser@gmail.com',
+    'oderocarilus@gmail.com',
+  ];
+
+  // Capture initial URL hash before Supabase detectSessionInUrl strips it
+  const INITIAL_URL_HASH = window.location.hash || '';
 
   let currentUser = null;
   let pendingAction = null;
 
+  function decodeJwtUser(accessToken) {
+    if (!accessToken || !accessToken.includes('.')) return null;
+    try {
+      const parts = accessToken.split('.');
+      if (parts.length < 2) return null;
+      const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+      const payload = JSON.parse(atob(padded));
+      const email = (
+        payload.email ||
+        (payload.user_metadata && payload.user_metadata.email) ||
+        ''
+      )
+        .trim()
+        .toLowerCase();
+      if (!email) return null;
+      const name =
+        (payload.user_metadata &&
+          (payload.user_metadata.full_name ||
+            payload.user_metadata.name ||
+            payload.user_metadata.display_name)) ||
+        email.split('@')[0];
+      return {
+        id: payload.sub || 'usr_' + Date.now(),
+        email,
+        name,
+        user_metadata: {
+          full_name: name,
+          display_name: name,
+        },
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function isVerifiedAgent(user) {
+    const u = user || getStoredUser();
+    if (!u || !u.email) return false;
+    return VERIFIED_AGENT_EMAILS.includes(u.email.trim().toLowerCase());
+  }
+
   function getStoredUser() {
+    // 1. Check localStorage ('uninest_user')
     try {
       const raw = localStorage.getItem(STORAGE_KEY_USER);
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed && parsed.email) {
+          const name = parsed.name || parsed.email.split('@')[0];
           return {
             id: parsed.id,
-            email: parsed.email,
-            name: parsed.name || parsed.email.split('@')[0],
+            email: parsed.email.toLowerCase(),
+            name,
             user_metadata: {
-              full_name: parsed.name || parsed.email.split('@')[0],
-              display_name: parsed.name || parsed.email.split('@')[0],
+              full_name: name,
+              display_name: name,
             },
           };
         }
       }
     } catch (e) {}
 
+    // 2. Check cookies ('uninest_user_client' or 'uninest_user_session')
     try {
       const cookies = document.cookie.split(';');
       for (const c of cookies) {
-        const [k, v] = c.trim().split('=');
+        const eqIdx = c.indexOf('=');
+        if (eqIdx === -1) continue;
+        const k = c.slice(0, eqIdx).trim();
+        const v = c.slice(eqIdx + 1).trim();
         if ((k === CLIENT_COOKIE_NAME || k === SESSION_COOKIE_NAME) && v) {
           const parsed = JSON.parse(decodeURIComponent(v));
           if (parsed && parsed.email) {
-            localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(parsed));
+            const name = parsed.name || parsed.email.split('@')[0];
+            localStorage.setItem(
+              STORAGE_KEY_USER,
+              JSON.stringify({ id: parsed.id, email: parsed.email.toLowerCase(), name })
+            );
             return {
               id: parsed.id,
-              email: parsed.email,
-              name: parsed.name || parsed.email.split('@')[0],
+              email: parsed.email.toLowerCase(),
+              name,
               user_metadata: {
-                full_name: parsed.name || parsed.email.split('@')[0],
-                display_name: parsed.name || parsed.email.split('@')[0],
+                full_name: name,
+                display_name: name,
               },
             };
+          }
+        }
+      }
+    } catch (e) {}
+
+    // 3. Check Supabase localStorage token (sb-*-auth-token)
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('sb-') && k.endsWith('-auth-token')) {
+          const raw = localStorage.getItem(k);
+          if (!raw) continue;
+          const parsed = JSON.parse(raw);
+          const sbUser =
+            parsed?.user || (parsed?.currentSession && parsed.currentSession.user);
+          if (sbUser && sbUser.email) {
+            const name =
+              (sbUser.user_metadata &&
+                (sbUser.user_metadata.full_name || sbUser.user_metadata.name)) ||
+              sbUser.email.split('@')[0];
+            const u = {
+              id: sbUser.id,
+              email: sbUser.email.toLowerCase(),
+              name,
+              user_metadata: { full_name: name, display_name: name },
+            };
+            const encoded = encodeURIComponent(
+              JSON.stringify({ id: u.id, email: u.email, name: u.name, createdAt: Date.now() })
+            );
+            localStorage.setItem(STORAGE_KEY_USER, JSON.stringify({ id: u.id, email: u.email, name: u.name }));
+            document.cookie = `${CLIENT_COOKIE_NAME}=${encoded}; path=/; max-age=2592000; SameSite=Lax`;
+            document.cookie = `${SESSION_COOKIE_NAME}=${encoded}; path=/; max-age=2592000; SameSite=Lax`;
+            return u;
+          }
+          if (parsed?.access_token) {
+            const decoded = decodeJwtUser(parsed.access_token);
+            if (decoded) {
+              localStorage.setItem(
+                STORAGE_KEY_USER,
+                JSON.stringify({ id: decoded.id, email: decoded.email, name: decoded.name })
+              );
+              return decoded;
+            }
           }
         }
       }
@@ -63,7 +165,8 @@
       email: user.email.toLowerCase(),
       name:
         user.name ||
-        user.user_metadata?.full_name ||
+        (user.user_metadata &&
+          (user.user_metadata.full_name || user.user_metadata.name)) ||
         user.email.split('@')[0],
       createdAt: Date.now(),
     };
@@ -73,6 +176,11 @@
       const encoded = encodeURIComponent(JSON.stringify(payload));
       document.cookie = `${CLIENT_COOKIE_NAME}=${encoded}; path=/; max-age=2592000; SameSite=Lax`;
       document.cookie = `${SESSION_COOKIE_NAME}=${encoded}; path=/; max-age=2592000; SameSite=Lax`;
+      fetch('/api/auth/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user: payload }),
+      }).catch(() => {});
     } catch (e) {}
     updateNavbarAuthUI();
     renderNavActions();
@@ -82,8 +190,18 @@
     currentUser = null;
     try {
       localStorage.removeItem(STORAGE_KEY_USER);
+      localStorage.removeItem('uninest_auth_next');
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('sb-')) {
+          keysToRemove.push(k);
+        }
+      }
+      keysToRemove.forEach((k) => localStorage.removeItem(k));
       document.cookie = `${CLIENT_COOKIE_NAME}=; path=/; max-age=0; SameSite=Lax`;
       document.cookie = `${SESSION_COOKIE_NAME}=; path=/; max-age=0; SameSite=Lax`;
+      fetch('/api/auth/session', { method: 'DELETE' }).catch(() => {});
     } catch (e) {}
     updateNavbarAuthUI();
     renderNavActions();
@@ -222,14 +340,25 @@
       btn.textContent = 'Redirecting to Google...';
     }
     try {
-      const nextUrl = window.location.pathname + window.location.search + window.location.hash;
+      const nextUrl =
+        window.location.pathname + window.location.search + window.location.hash;
+      try {
+        localStorage.setItem('uninest_auth_next', nextUrl);
+        document.cookie = `uninest_auth_next=${encodeURIComponent(nextUrl)}; path=/; max-age=900; SameSite=Lax`;
+      } catch (e) {}
+
       if (window.supabaseClient && window.supabaseClient.auth) {
         const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(
           nextUrl
         )}`;
         const { error } = await window.supabaseClient.auth.signInWithOAuth({
           provider: 'google',
-          options: { redirectTo },
+          options: {
+            redirectTo,
+            queryParams: {
+              prompt: 'select_account',
+            },
+          },
         });
         if (error) {
           setAlert(error.message);
@@ -261,6 +390,30 @@
     pendingAction = actionCallback;
     openAuthModal('signin', options);
     return false;
+  }
+
+  function requireVerifiedAgent(actionCallback, options = {}) {
+    if (!isAuthenticated()) {
+      pendingAction = (u) => {
+        if (isVerifiedAgent(u)) {
+          if (typeof actionCallback === 'function') actionCallback(u);
+        } else {
+          showToast('Access Restricted: Only verified UniNest agents can perform this action.', 'error');
+        }
+      };
+      openAuthModal('signin', options);
+      return false;
+    }
+
+    if (!isVerifiedAgent(currentUser)) {
+      showToast('Access Restricted: Only verified UniNest agents can perform this action.', 'error');
+      return false;
+    }
+
+    if (typeof actionCallback === 'function') {
+      actionCallback(currentUser);
+    }
+    return true;
   }
 
   async function signOut() {
@@ -295,6 +448,7 @@
     if (!navActionsContainers.length) return;
 
     const user = getStoredUser();
+    const verifiedAgent = isVerifiedAgent(user);
     const emailName = user?.name || (user?.email ? user.email.split('@')[0] : 'Student');
     const initial = emailName.charAt(0).toUpperCase();
     const isMarketplacePage =
@@ -308,18 +462,21 @@
         if (user) {
           html = `
             <div class="user-nav-badge" style="display: inline-flex; align-items: center; gap: 0.5rem; margin-right: 0.5rem; background: #f1f5f9; padding: 0.35rem 0.75rem; border-radius: 9999px;">
-              <span style="width: 24px; height: 24px; border-radius: 50%; background: #2563eb; color: #fff; font-size: 0.75rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center;">${initial}</span>
-              <span style="font-weight: 600; font-size: 0.84rem; color: #0f172a;">${emailName}</span>
+              <span style="width: 24px; height: 24px; border-radius: 50%; background: ${verifiedAgent ? '#16a34a' : '#2563eb'}; color: #fff; font-size: 0.75rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center;">${initial}</span>
+              <span style="font-weight: 600; font-size: 0.84rem; color: #0f172a;">${emailName}${verifiedAgent ? ' ✓' : ''}</span>
             </div>
             <button type="button" class="btn btn-secondary" onclick="UniMarketplace.openStatusTrackerModal()" style="font-size: 0.85rem; padding: 0.45rem 0.85rem; margin-right: 0.25rem;">Track Deal</button>
             <button type="button" class="btn btn-secondary" onclick="UniMarketplace.openPostModal()" style="margin-right: 0.25rem; font-size: 0.85rem; padding: 0.45rem 0.85rem;">+ List Item</button>
-            <button type="button" class="btn btn-primary" onclick="UniMarketplace.openAgentPortal()" style="font-size: 0.85rem; padding: 0.45rem 0.85rem; margin-right: 0.25rem;">Agent Portal</button>
+            ${
+              verifiedAgent
+                ? `<button type="button" class="btn btn-primary" onclick="UniMarketplace.openAgentPortal()" style="font-size: 0.85rem; padding: 0.45rem 0.85rem; margin-right: 0.25rem;">Agent Portal</button>`
+                : ''
+            }
             <button type="button" class="btn btn-secondary" onclick="UniAuth.signOut()" style="padding: 0.45rem 0.75rem; font-size: 0.8rem;">Logout</button>
           `;
         } else {
           html = `
             <button type="button" class="btn btn-secondary" onclick="UniMarketplace.openPostModal()" style="margin-right: 0.25rem; font-size: 0.85rem; padding: 0.45rem 0.85rem;">+ List Item</button>
-            <button type="button" class="btn btn-secondary" onclick="UniMarketplace.openAgentPortal()" style="font-size: 0.85rem; padding: 0.45rem 0.85rem; margin-right: 0.35rem;">Agent Portal</button>
             <button type="button" class="btn btn-primary" onclick="UniAuth.openAuthModal('signin')" style="padding: 0.45rem 0.95rem; font-size: 0.85rem; font-weight: 600;">Sign in with Google</button>
           `;
         }
@@ -327,11 +484,15 @@
         if (user) {
           html = `
             <div class="user-nav-badge" style="display: inline-flex; align-items: center; gap: 0.5rem; margin-right: 0.5rem; background: #f1f5f9; padding: 0.35rem 0.75rem; border-radius: 9999px;">
-              <span style="width: 24px; height: 24px; border-radius: 50%; background: #2563eb; color: #fff; font-size: 0.75rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center;">${initial}</span>
-              <span style="font-weight: 600; font-size: 0.84rem; color: #0f172a;">${emailName}</span>
+              <span style="width: 24px; height: 24px; border-radius: 50%; background: ${verifiedAgent ? '#16a34a' : '#2563eb'}; color: #fff; font-size: 0.75rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center;">${initial}</span>
+              <span style="font-weight: 600; font-size: 0.84rem; color: #0f172a;">${emailName}${verifiedAgent ? ' ✓' : ''}</span>
             </div>
             <a href="marketplace.html#sell" class="btn btn-secondary" style="font-size: 0.82rem; padding: 0.45rem 0.75rem; margin-right: 0.25rem;">+ Sell Item</a>
-            <a href="/post-property" class="btn btn-secondary" style="font-size: 0.82rem; padding: 0.45rem 0.75rem; margin-right: 0.25rem;">+ Post House</a>
+            ${
+              verifiedAgent
+                ? `<a href="/post-property" class="btn btn-secondary" style="font-size: 0.82rem; padding: 0.45rem 0.75rem; margin-right: 0.25rem;">+ Post House</a>`
+                : `<a href="marketplace.html#track" class="btn btn-secondary" style="font-size: 0.82rem; padding: 0.45rem 0.75rem; margin-right: 0.25rem;">Track Deal</a>`
+            }
             <button type="button" class="btn btn-secondary" onclick="UniAuth.signOut()" style="padding: 0.45rem 0.75rem; font-size: 0.8rem;">Logout</button>
           `;
         } else {
@@ -352,22 +513,33 @@
     renderNavActions();
 
     // Check URL hash fragment for Google OAuth implicit flow tokens
-    if (window.location.hash && window.location.hash.includes('access_token')) {
+    const activeHash = window.location.hash || INITIAL_URL_HASH;
+    if (activeHash && activeHash.includes('access_token')) {
       try {
-        const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+        const hashParams = new URLSearchParams(activeHash.replace(/^#/, ''));
         const accessToken = hashParams.get('access_token');
         const refreshToken = hashParams.get('refresh_token');
-        if (accessToken && refreshToken && window.supabaseClient) {
-          const { data, error } = await window.supabaseClient.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
-          });
-          if (!error && data?.user) {
-            setStoredUser(data.user);
-            showToast('Signed in with Google!', 'success');
-            if (window.history && window.history.replaceState) {
-              window.history.replaceState(null, '', window.location.pathname + window.location.search);
+        if (accessToken) {
+          const decoded = decodeJwtUser(accessToken);
+          if (decoded) {
+            setStoredUser(decoded);
+          }
+          if (refreshToken && window.supabaseClient && window.supabaseClient.auth) {
+            const { data, error } = await window.supabaseClient.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            });
+            if (!error && data?.user) {
+              setStoredUser(data.user);
             }
+          }
+          showToast('Signed in with Google!', 'success');
+          if (window.history && window.history.replaceState) {
+            window.history.replaceState(
+              null,
+              '',
+              window.location.pathname + window.location.search
+            );
           }
         }
       } catch (e) {}
@@ -383,6 +555,7 @@
         window.supabaseClient.auth.onAuthStateChange((_event, session) => {
           if (session?.user) {
             setStoredUser(session.user);
+            closeAuthModal();
             if (typeof pendingAction === 'function') {
               const cb = pendingAction;
               pendingAction = null;
@@ -399,7 +572,9 @@
     getStoredUser,
     saveClientSession: setStoredUser,
     isAuthenticated,
+    isVerifiedAgent,
     requireAuth,
+    requireVerifiedAgent,
     openAuthModal,
     closeAuthModal,
     signInWithGoogle,
