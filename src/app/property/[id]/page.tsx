@@ -1,10 +1,9 @@
 import Link from 'next/link';
 import PropertyInquiryForm from './PropertyInquiryForm';
 import FavoriteButton from '@/components/FavoriteButton';
-import { notFound, redirect } from 'next/navigation';
-import { deleteProperty, markPropertyAsSold } from '@/app/actions/propertyActions';
+import { redirect } from 'next/navigation';
+import { deleteProperty, getPropertyById, markPropertyAsSold } from '@/app/actions/propertyActions';
 import { getCurrentUser } from '@/app/actions/authActions';
-import { createClient } from '@/utils/supabase/server';
 import { FALLBACK_PROPERTIES } from '@/data/fallbackProperties';
 
 import { getFavorites } from '@/app/actions/favoriteActions';
@@ -18,18 +17,10 @@ type PageProps = {
 export default async function PropertyDetailPage({ params }: PageProps) {
   const { id } = await params;
   const propertyIdNum = parseInt(id);
-  const supabase = await createClient();
-  const user = await getCurrentUser();
-  
-  const { data: propertyData } = await supabase
-    .from('properties')
-    .select(`
-      *,
-      agents (*),
-      reviews (*)
-    `)
-    .eq('id', propertyIdNum)
-    .maybeSingle();
+  const [user, propertyData] = await Promise.all([
+    getCurrentUser(),
+    getPropertyById(propertyIdNum),
+  ]);
 
   let isFavorite = false;
   if (user) {

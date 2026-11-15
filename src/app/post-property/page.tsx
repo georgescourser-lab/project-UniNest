@@ -20,6 +20,8 @@ export default function PostPropertyPage() {
   const [activeEmail, setActiveEmail] = useState<string | null>(null);
 
   const [previewFiles, setPreviewFiles] = useState<string[]>([]);
+  const [compressedImages, setCompressedImages] = useState<string[]>([]);
+  const [compressingFiles, setCompressingFiles] = useState(false);
   const [imageUrlInput, setImageUrlInput] = useState('');
 
   useEffect(() => {
@@ -90,17 +92,74 @@ export default function PostPropertyPage() {
     };
   }, [isLoading, user, router]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const compressImageFileToDataUrl = (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const rawDataUrl = typeof event.target?.result === 'string' ? event.target.result : '';
+        if (!rawDataUrl) {
+          resolve('');
+          return;
+        }
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const maxDim = 1000;
+            let width = img.width || 800;
+            let height = img.height || 600;
+            if (width > maxDim || height > maxDim) {
+              if (width >= height) {
+                height = Math.round((height * maxDim) / width);
+                width = maxDim;
+              } else {
+                width = Math.round((width * maxDim) / height);
+                height = maxDim;
+              }
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(img, 0, 0, width, height);
+              const compressed = canvas.toDataURL('image/jpeg', 0.8);
+              resolve(compressed || rawDataUrl);
+              return;
+            }
+          } catch {
+            // Fall back to raw data URL
+          }
+          resolve(rawDataUrl);
+        };
+        img.onerror = () => resolve(rawDataUrl);
+        img.src = rawDataUrl;
+      };
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) {
       setPreviewFiles([]);
+      setCompressedImages([]);
       return;
     }
-    const urls: string[] = [];
-    for (let i = 0; i < Math.min(files.length, 6); i++) {
-      urls.push(URL.createObjectURL(files[i]));
-    }
+    const selected = Array.from(files).slice(0, 6);
+    const urls = selected.map((file) => URL.createObjectURL(file));
     setPreviewFiles(urls);
+    setCompressingFiles(true);
+    try {
+      const dataUrls = await Promise.all(selected.map((file) => compressImageFileToDataUrl(file)));
+      const validDataUrls = dataUrls.filter(Boolean);
+      setCompressedImages(validDataUrls);
+      if (validDataUrls.length > 0) {
+        setPreviewFiles(validDataUrls);
+      }
+    } finally {
+      setCompressingFiles(false);
+    }
   };
 
   const parsedImageUrls = imageUrlInput
@@ -335,16 +394,23 @@ export default function PostPropertyPage() {
                   <span style={{ fontWeight: 600, color: '#1e293b' }}>
                     Upload Image Files
                   </span>
+                  <input
+                    type="hidden"
+                    name="compressed_images_json"
+                    value={compressedImages.length > 0 ? JSON.stringify(compressedImages) : ''}
+                  />
                   <input 
                     type="file" 
-                    name="images" 
+                    name={compressedImages.length > 0 ? undefined : "images"} 
                     accept="image/png, image/jpeg, image/webp" 
                     multiple 
                     onChange={handleFileChange}
                     style={{ marginTop: '0.5rem' }}
                   />
                   <small style={{ color: '#64748b', fontSize: '0.8rem', marginTop: '0.35rem', display: 'block' }}>
-                    Upload photos directly from your device (Max 50MB each).
+                    {compressingFiles
+                      ? 'Optimizing selected photos for fast upload...'
+                      : 'Upload photos directly from your device (Max 50MB each).'}
                   </small>
                 </label>
               </div>
@@ -419,8 +485,8 @@ export default function PostPropertyPage() {
           ) : (
             <div className="form-actions">
               <Link href="/search" className="btn btn-secondary">Cancel</Link>
-              <button type="submit" className="btn btn-primary" disabled={pending}>
-                {pending ? 'Posting...' : 'Post House'}
+              <button type="submit" className="btn btn-primary" disabled={pending || compressingFiles}>
+                {pending ? 'Posting...' : compressingFiles ? 'Preparing Photos...' : 'Post House'}
               </button>
             </div>
           )}

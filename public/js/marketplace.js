@@ -540,20 +540,64 @@
 
   let uploadedItemImageDataUrl = '';
 
+  function compressImageDataUrl(rawDataUrl, callback) {
+    if (!rawDataUrl || typeof rawDataUrl !== 'string') {
+      callback('');
+      return;
+    }
+    const img = new Image();
+    img.onload = function() {
+      try {
+        const maxDim = 900;
+        let width = img.width || 800;
+        let height = img.height || 600;
+        if (width > maxDim || height > maxDim) {
+          if (width >= height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressed = canvas.toDataURL('image/jpeg', 0.8);
+          callback(compressed || rawDataUrl);
+          return;
+        }
+      } catch (err) {
+        console.warn('Image compression fallback:', err);
+      }
+      callback(rawDataUrl);
+    };
+    img.onerror = function() {
+      callback(rawDataUrl);
+    };
+    img.src = rawDataUrl;
+  }
+
   function handleItemFilePreview(input) {
     if (input && input.files && input.files[0]) {
       const file = input.files[0];
       const reader = new FileReader();
       reader.onload = function(e) {
-        uploadedItemImageDataUrl = e.target.result;
-        const box = document.getElementById('item-preview-box');
-        const img = document.getElementById('item-preview-img');
-        const lbl = document.getElementById('item-preview-label');
-        if (box && img) {
-          img.src = uploadedItemImageDataUrl;
-          if (lbl) lbl.textContent = 'Uploaded: ' + file.name;
-          box.style.display = 'flex';
-        }
+        const rawResult = e.target.result;
+        compressImageDataUrl(rawResult, function(compressedUrl) {
+          uploadedItemImageDataUrl = compressedUrl || rawResult;
+          const box = document.getElementById('item-preview-box');
+          const img = document.getElementById('item-preview-img');
+          const lbl = document.getElementById('item-preview-label');
+          if (box && img) {
+            img.src = uploadedItemImageDataUrl;
+            if (lbl) lbl.textContent = 'Uploaded: ' + file.name;
+            box.style.display = 'flex';
+          }
+        });
       };
       reader.readAsDataURL(file);
     }

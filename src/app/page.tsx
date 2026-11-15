@@ -1,25 +1,19 @@
 import Link from 'next/link';
-import { createClient } from '@/utils/supabase/server';
 import { getCurrentUser } from '@/app/actions/authActions';
 import { getFavorites } from '@/app/actions/favoriteActions';
+import { getAllProperties } from '@/app/actions/propertyActions';
 import FavoriteButton from '@/components/FavoriteButton';
-import { FALLBACK_PROPERTIES } from '@/data/fallbackProperties';
 import HomeMarketplaceShowcase from '@/components/HomeMarketplaceShowcase';
 
+export const dynamic = 'force-dynamic';
+
 export default async function Home() {
-  const supabase = await createClient();
   const user = await getCurrentUser();
   const userFavorites = user ? await getFavorites() : [];
   const favoriteIds = new Set(userFavorites.map((f: any) => f.property_id));
 
-  // Fetch featured properties via Supabase REST API instead of Prisma to avoid port timeouts
-  const { data: propertiesData } = await supabase
-    .from('properties')
-    .select('*')
-    .order('id', { ascending: false })
-    .limit(6);
-    
-  const properties = propertiesData || [];
+  const allProperties = await getAllProperties();
+  const properties = allProperties.slice(0, 6);
 
   return (
     <>

@@ -1,18 +1,15 @@
 import Link from 'next/link';
-import { createClient } from '@/utils/supabase/server';
 import { getCurrentUser } from '@/app/actions/authActions';
 import { getFavorites } from '@/app/actions/favoriteActions';
-import { getAgents, verifyAgentAccess } from '@/app/actions/propertyActions';
+import { getAgents, getAllProperties, verifyAgentAccess } from '@/app/actions/propertyActions';
 import FilterSidebar from '@/components/FilterSidebar';
 import FavoriteButton from '@/components/FavoriteButton';
 import PostHouseButton from '@/components/PostHouseButton';
-import { FALLBACK_PROPERTIES } from '@/data/fallbackProperties';
 
 export const dynamic = 'force-dynamic';
 
 export default async function SearchPage({ searchParams }: { searchParams: Promise<{ [key: string]: string | string[] | undefined }> }) {
   const resolvedParams = (await searchParams) || {};
-  const supabase = await createClient();
   const user = await getCurrentUser();
   const userFavorites = user ? await getFavorites() : [];
   const favoriteIds = new Set(userFavorites.map((f: any) => f.property_id));
@@ -42,35 +39,14 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   }
   
   const location = resolvedParams.location as string;
-
-  let query = supabase.from('properties').select('*');
-  
   const typesArray = types as string[] | undefined;
-  if (typesArray && typesArray.length > 0) {
-    query = query.in('type', typesArray);
-  }
-  
-  const orConditions: string[] = [];
-  
   const campusesArray = campuses as string[] | undefined;
-  if (campusesArray && campusesArray.length > 0) {
-    campusesArray.forEach((campus: string) => {
-      orConditions.push(`location.ilike.%${campus}%`);
-    });
-  }
-  
-  if (location && location.trim() !== '') {
-    orConditions.push(`location.ilike.%${location}%`);
-  }
 
-  if (orConditions.length > 0) {
-    query = query.or(orConditions.join(','));
-  }
-
-  query = query.order('id', { ascending: false });
-
-  const { data: propertiesData } = await query;
-  const properties = propertiesData || [];
+  const properties = await getAllProperties({
+    types: typesArray,
+    campuses: campusesArray,
+    location,
+  });
 
   return (
     <div className="container" style={{ paddingTop: '120px' }}>
