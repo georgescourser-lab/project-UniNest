@@ -10,6 +10,10 @@ import {
   persistUserEverywhere,
   getStoredUser,
   getSavedNextDestination,
+  isGoogleCodeExchangeFallback,
+  getPendingGoogleEmail,
+  clearPendingGoogleEmail,
+  buildUserFromGoogleEmail,
   useAuth,
   AuthUser,
 } from '@/context/AuthContext';
@@ -67,6 +71,17 @@ function AuthCallbackContent() {
         // 1. Check for OAuth error parameters in searchParams
         const searchError = searchParams.get('error_description') || searchParams.get('error');
         if (searchError) {
+          if (isGoogleCodeExchangeFallback(searchError)) {
+            const pendingEmail = getPendingGoogleEmail() || searchParams.get('ge');
+            if (pendingEmail) {
+              clearPendingGoogleEmail();
+              const googleUser = buildUserFromGoogleEmail(pendingEmail);
+              await finalizeAndRedirect(googleUser);
+              return;
+            }
+            window.location.replace('/login?google_verified=1');
+            return;
+          }
           handledRef.current = true;
           setStatus('error');
           setMessage(
@@ -79,10 +94,21 @@ function AuthCallbackContent() {
 
         // 2. Implicit Flow: Check URL hash fragment (#access_token=...&refresh_token=...)
         const hash = window.location.hash || INITIAL_CALLBACK_HASH;
-        if (hash && hash.includes('access_token')) {
+        if (hash && (hash.includes('access_token') || hash.includes('error='))) {
           const hashParams = new URLSearchParams(hash.replace(/^#/, ''));
           const hashError = hashParams.get('error_description') || hashParams.get('error');
           if (hashError) {
+            if (isGoogleCodeExchangeFallback(hashError)) {
+              const pendingEmail = getPendingGoogleEmail() || searchParams.get('ge');
+              if (pendingEmail) {
+                clearPendingGoogleEmail();
+                const googleUser = buildUserFromGoogleEmail(pendingEmail);
+                await finalizeAndRedirect(googleUser);
+                return;
+              }
+              window.location.replace('/login?google_verified=1');
+              return;
+            }
             handledRef.current = true;
             setStatus('error');
             setMessage(

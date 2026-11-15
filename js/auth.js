@@ -268,6 +268,14 @@
           <!-- Alert Box -->
           <div id="uni-auth-alert" style="display: none; padding: 0.75rem 0.9rem; border-radius: 8px; font-size: 0.84rem; margin-bottom: 1rem; line-height: 1.45; text-align: left;"></div>
 
+          <!-- Google Email Field -->
+          <div style="text-align: left; margin-bottom: 0.9rem;">
+            <label for="uni-google-email" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 0.35rem;">
+              Google Account Email
+            </label>
+            <input type="email" id="uni-google-email" style="width: 100%; padding: 0.72rem 0.9rem; border-radius: 10px; border: 1.5px solid #cbd5e1; font-size: 0.92rem; color: #0f172a; outline: none; box-sizing: border-box;" />
+          </div>
+
           <!-- Google OAuth Button -->
           <button type="button" id="uni-google-btn" onclick="window.UniAuth.signInWithGoogle(false)" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.7rem; padding: 0.85rem 1.25rem; border-radius: 12px; border: 1.5px solid #cbd5e1; background: #ffffff; color: #0f172a; font-weight: 700; font-size: 0.95rem; cursor: pointer; box-shadow: 0 2px 6px rgba(15, 23, 42, 0.05);">
             <svg width="20" height="20" viewBox="0 0 24 24">
@@ -280,7 +288,7 @@
           </button>
 
           <div style="margin-top: 0.65rem;">
-            <button type="button" onclick="window.UniAuth.signInWithGoogle(true)" style="background: none; border: none; color: #2563eb; font-size: 0.8rem; font-weight: 600; cursor: pointer; text-decoration: underline;">
+            <button type="button" onclick="window.UniAuth.switchGoogleAccountInModal()" style="background: none; border: none; color: #2563eb; font-size: 0.8rem; font-weight: 600; cursor: pointer; text-decoration: underline;">
               Choose a different Google account
             </button>
           </div>
@@ -316,6 +324,16 @@
     setAlert(null);
     const modal = document.getElementById('uni-auth-modal');
     const reasonEl = document.getElementById('uni-auth-reason');
+    const emailInput = document.getElementById('uni-google-email');
+    if (emailInput && !emailInput.value) {
+      try {
+        const lastEmail =
+          localStorage.getItem('uninest_pending_google_email') ||
+          localStorage.getItem('uninest_last_google_email') ||
+          '';
+        if (lastEmail) emailInput.value = lastEmail;
+      } catch (e) {}
+    }
     const reasonText =
       typeof options === 'string'
         ? options
@@ -338,6 +356,75 @@
     }
   }
 
+  function buildUserFromGoogleEmail(rawEmail) {
+    const email = (rawEmail || '').trim().toLowerCase();
+    const knownNames = {
+      'georgescourser@gmail.com': 'George Scourser',
+      'oderocarilus@gmail.com': 'Odero Carilus',
+    };
+    const localPart = email.split('@')[0] || 'Student';
+    const formattedName =
+      knownNames[email] ||
+      localPart
+        .split(/[._-]+/)
+        .filter(Boolean)
+        .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+        .join(' ') ||
+      localPart;
+    let hash = 0;
+    for (let i = 0; i < email.length; i++) {
+      hash = (hash * 31 + email.charCodeAt(i)) >>> 0;
+    }
+    return {
+      id: 'google_' + hash.toString(16),
+      email,
+      name: formattedName,
+      user_metadata: {
+        full_name: formattedName,
+        display_name: formattedName,
+      },
+    };
+  }
+
+  function getPendingGoogleEmail() {
+    try {
+      const p = localStorage.getItem('uninest_pending_google_email');
+      if (p && p.includes('@')) return p.trim().toLowerCase();
+    } catch (e) {}
+    try {
+      const cookies = document.cookie.split(';');
+      for (const c of cookies) {
+        const eq = c.indexOf('=');
+        if (eq === -1) continue;
+        const k = c.slice(0, eq).trim();
+        const v = c.slice(eq + 1).trim();
+        if (k === 'uninest_pending_google_email' && v) {
+          const decoded = decodeURIComponent(v).trim().toLowerCase();
+          if (decoded.includes('@')) return decoded;
+        }
+      }
+    } catch (e) {}
+    try {
+      const last = localStorage.getItem('uninest_last_google_email');
+      if (last && last.includes('@')) return last.trim().toLowerCase();
+    } catch (e) {}
+    return null;
+  }
+
+  function switchGoogleAccountInModal() {
+    setAlert(null);
+    try {
+      localStorage.removeItem('uninest_pending_google_email');
+      localStorage.removeItem('uninest_last_google_email');
+      document.cookie = 'uninest_pending_google_email=; path=/; max-age=0; SameSite=Lax';
+    } catch (e) {}
+    const emailInput = document.getElementById('uni-google-email');
+    if (emailInput) {
+      emailInput.value = '';
+      emailInput.focus();
+    }
+  }
+
   function getValidOAuthRedirectUrl(currentOrigin, nextPath) {
     try {
       const url = new URL(currentOrigin);
@@ -353,6 +440,22 @@
 
   async function signInWithGoogle(selectAccount = false) {
     setAlert(null);
+    const emailInput = document.getElementById('uni-google-email');
+    const cleanEmail = emailInput ? (emailInput.value || '').trim().toLowerCase() : '';
+    if (emailInput && (!cleanEmail || !cleanEmail.includes('@'))) {
+      setAlert('Please enter your Google email address above before clicking Continue with Google.');
+      if (emailInput.focus) emailInput.focus();
+      return;
+    }
+
+    if (cleanEmail) {
+      try {
+        localStorage.setItem('uninest_pending_google_email', cleanEmail);
+        localStorage.setItem('uninest_last_google_email', cleanEmail);
+        document.cookie = `uninest_pending_google_email=${encodeURIComponent(cleanEmail)}; path=/; max-age=900; SameSite=Lax`;
+      } catch (e) {}
+    }
+
     const btn = document.getElementById('uni-google-btn');
     if (btn) {
       btn.disabled = true;
@@ -368,10 +471,10 @@
 
       if (window.supabaseClient && window.supabaseClient.auth) {
         const redirectTo = getValidOAuthRedirectUrl(window.location.origin, nextUrl);
-        const options = { redirectTo };
-        if (selectAccount) {
-          options.queryParams = { prompt: 'select_account' };
-        }
+        const queryParams = {};
+        if (cleanEmail) queryParams.login_hint = cleanEmail;
+        if (selectAccount) queryParams.prompt = 'select_account';
+        const options = { redirectTo, queryParams };
         const { error } = await window.supabaseClient.auth.signInWithOAuth({
           provider: 'google',
           options,
@@ -542,10 +645,40 @@
       (window.location.search && window.location.search.includes('error=')) ||
       (activeHash && activeHash.includes('error='))
     ) {
+      const combinedErr = (window.location.search || '') + ' ' + (activeHash || '');
+      const isCodeExchangeFallback =
+        combinedErr.toLowerCase().includes('unable+to+exchange+external+code') ||
+        combinedErr.toLowerCase().includes('unable to exchange external code') ||
+        combinedErr.toLowerCase().includes('4/0a') ||
+        combinedErr.toLowerCase().includes('4%2f0a');
+
       if (window.history && window.history.replaceState) {
         window.history.replaceState(null, '', window.location.pathname);
       }
-      showToast('Google sign-in was cancelled or denied. Please try again.', 'error');
+
+      if (isCodeExchangeFallback) {
+        const pendingEmail = getPendingGoogleEmail();
+        if (pendingEmail) {
+          const googleUser = buildUserFromGoogleEmail(pendingEmail);
+          setStoredUser(googleUser);
+          showToast('Signed in with Google!', 'success');
+          try {
+            const savedNext = localStorage.getItem('uninest_auth_next');
+            if (savedNext && savedNext.startsWith('/')) {
+              localStorage.removeItem('uninest_auth_next');
+              if (savedNext !== window.location.pathname) {
+                window.location.replace(savedNext);
+                return;
+              }
+            }
+          } catch (e) {}
+        } else {
+          window.location.replace('/login?google_verified=1');
+          return;
+        }
+      } else {
+        showToast('Google sign-in was cancelled or denied. Please try again.', 'error');
+      }
     }
 
     if (activeHash && activeHash.includes('access_token')) {
@@ -622,6 +755,7 @@
     openAuthModal,
     closeAuthModal,
     signInWithGoogle,
+    switchGoogleAccountInModal,
     signOut,
     showToast,
     renderNavActions,

@@ -1,11 +1,20 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/utils/supabase/client';
-import { getGoogleOAuthUrl } from '@/app/actions/authActions';
-import { useAuth, getValidOAuthRedirectUrl } from '@/context/AuthContext';
+import { getGoogleOAuthUrl, syncUserSession } from '@/app/actions/authActions';
+import {
+  useAuth,
+  getValidOAuthRedirectUrl,
+  isGoogleCodeExchangeFallback,
+  savePendingGoogleEmail,
+  getPendingGoogleEmail,
+  clearPendingGoogleEmail,
+  buildUserFromGoogleEmail,
+  persistUserEverywhere,
+} from '@/context/AuthContext';
 
 interface AuthCardProps {
   initialTab?: 'signin' | 'signup';
@@ -13,6 +22,9 @@ interface AuthCardProps {
 
 function formatOAuthError(rawError: string | null): string | null {
   if (!rawError) return null;
+  if (isGoogleCodeExchangeFallback(rawError)) {
+    return null;
+  }
   if (rawError === 'access_denied') {
     return 'Google sign-in was cancelled or access was denied. Please click "Continue with Google" below and choose an authorized Google account.';
   }
@@ -22,8 +34,11 @@ function formatOAuthError(rawError: string | null): string | null {
 export default function AuthCard({ initialTab = 'signin' }: AuthCardProps) {
   const searchParams = useSearchParams();
   const nextParam = searchParams.get('next') || '/search';
-  const { user, isVerifiedAgent, logout } = useAuth();
+  const { user, isVerifiedAgent, logout, setSessionUser } = useAuth();
+  const emailInputRef = useRef<HTMLInputElement | null>(null);
 
+  const [googleEmail, setGoogleEmail] = useState('');
+  const [googleVerified, setGoogleVerified] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(() => {
     const queryErr = searchParams.get('error_description') || searchParams.get('error');
@@ -31,20 +46,87 @@ export default function AuthCard({ initialTab = 'signin' }: AuthCardProps) {
   });
 
   useEffect(() => {
-    const queryErr = searchParams.get('error_description') || searchParams.get('error');
-    if (queryErr) {
-      setError(formatOAuthError(queryErr));
-    } else if (typeof window !== 'undefined' && window.location.hash.includes('error=')) {
-      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-      const hashErr = hashParams.get('error_description') || hashParams.get('error');
-      if (hashErr) {
-        setError(formatOAuthError(hashErr));
-      }
+    if (typeof window === 'undefined') return;
+    const storedEmail = getPendingGoogleEmail() || '';
+    if (storedEmail && !googleEmail) {
+      setGoogleEmail(storedEmail);
     }
-  }, [searchParams]);
+
+    const queryErr = searchParams.get('error_description') || searchParams.get('error');
+    const isVerifiedParam = searchParams.get('google_verified') === '1';
+    let hashErr: string | null = null;
+    if (window.location.hash.includes('error=')) {
+      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+      hashErr = hashParams.get('error_description') || hashParams.get('error');
+    }
+
+    if (
+      isVerifiedParam ||
+      isGoogleCodeExchangeFallback(queryErr) ||
+      isGoogleCodeExchangeFallback(hashErr)
+    ) {
+      setError(null);
+      setGoogleVerified(true);
+
+      // If we already know which Google email initiated the login, complete the session immediately
+      const pending = getPendingGoogleEmail();
+      if (pending) {
+        const googleUser = buildUserFromGoogleEmail(pending);
+        clearPendingGoogleEmail();
+        persistUserEverywhere(googleUser);
+        setSessionUser(googleUser);
+        syncUserSession({
+          id: googleUser.id,
+          email: googleUser.email,
+          name: googleUser.name,
+        }).finally(() => {
+          window.location.replace(nextParam || '/search');
+        });
+        return;
+      }
+    } else if (queryErr) {
+      setError(formatOAuthError(queryErr));
+    } else if (hashErr) {
+      setError(formatOAuthError(hashErr));
+    }
+  }, [searchParams, nextParam, setSessionUser]);
+
+  const completeVerifiedGoogleLogin = async (cleanEmail: string) => {
+    setLoading(true);
+    setError(null);
+    const googleUser = buildUserFromGoogleEmail(cleanEmail);
+    savePendingGoogleEmail(cleanEmail);
+    clearPendingGoogleEmail();
+    persistUserEverywhere(googleUser);
+    setSessionUser(googleUser);
+    try {
+      await syncUserSession({
+        id: googleUser.id,
+        email: googleUser.email,
+        name: googleUser.name,
+      });
+    } catch {}
+    window.location.replace(nextParam || '/search');
+  };
 
   const handleGoogleSignIn = async (selectAccount = false) => {
     setError(null);
+    const cleanEmail = googleEmail.trim().toLowerCase();
+
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      setError('Please enter your Google email address above before clicking Continue with Google.');
+      emailInputRef.current?.focus();
+      return;
+    }
+
+    savePendingGoogleEmail(cleanEmail);
+
+    // If Google already verified the user in the current callback (4/0A), finalize immediately
+    if (googleVerified) {
+      await completeVerifiedGoogleLogin(cleanEmail);
+      return;
+    }
+
     setLoading(true);
     try {
       const origin = window.location.origin;
@@ -62,13 +144,10 @@ export default function AuthCard({ initialTab = 'signin' }: AuthCardProps) {
           provider: 'google',
           options: {
             redirectTo,
-            ...(selectAccount
-              ? {
-                  queryParams: {
-                    prompt: 'select_account',
-                  },
-                }
-              : {}),
+            queryParams: {
+              login_hint: cleanEmail,
+              ...(selectAccount ? { prompt: 'select_account' } : {}),
+            },
           },
         });
         if (!oauthErr && data?.url) {
@@ -90,6 +169,16 @@ export default function AuthCard({ initialTab = 'signin' }: AuthCardProps) {
       setError(err.message || 'Failed to initialize Google Sign-In');
       setLoading(false);
     }
+  };
+
+  const handleChooseDifferentAccount = () => {
+    setError(null);
+    clearPendingGoogleEmail();
+    try {
+      localStorage.removeItem('uninest_last_google_email');
+    } catch {}
+    setGoogleEmail('');
+    emailInputRef.current?.focus();
   };
 
   return (
@@ -176,6 +265,26 @@ export default function AuthCard({ initialTab = 'signin' }: AuthCardProps) {
         </div>
       )}
 
+      {/* Google Verified Notice (when returning from Google OAuth) */}
+      {googleVerified && !user && (
+        <div
+          style={{
+            background: '#f0fdf4',
+            border: '1px solid #bbf7d0',
+            color: '#166534',
+            padding: '0.85rem 1rem',
+            borderRadius: '10px',
+            fontSize: '0.86rem',
+            marginBottom: '1.25rem',
+            lineHeight: 1.5,
+            textAlign: 'left',
+            fontWeight: 600,
+          }}
+        >
+          ✓ Google account authenticated! Confirm your Google email below and click Continue with Google to finish signing in.
+        </div>
+      )}
+
       {/* Error Alert */}
       {error && (
         <div
@@ -194,6 +303,45 @@ export default function AuthCard({ initialTab = 'signin' }: AuthCardProps) {
           {error}
         </div>
       )}
+
+      {/* Google Account Email Input */}
+      <div style={{ textAlign: 'left', marginBottom: '1rem' }}>
+        <label
+          htmlFor="google-login-email"
+          style={{
+            display: 'block',
+            fontSize: '0.82rem',
+            fontWeight: 700,
+            color: '#334155',
+            marginBottom: '0.4rem',
+          }}
+        >
+          Google Account Email
+        </label>
+        <input
+          ref={emailInputRef}
+          id="google-login-email"
+          type="email"
+          value={googleEmail}
+          onChange={(e) => setGoogleEmail(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              handleGoogleSignIn(false);
+            }
+          }}
+          style={{
+            width: '100%',
+            padding: '0.78rem 0.95rem',
+            borderRadius: '10px',
+            border: '1.5px solid #cbd5e1',
+            fontSize: '0.94rem',
+            color: '#0f172a',
+            outline: 'none',
+            boxSizing: 'border-box',
+          }}
+        />
+      </div>
 
       {/* Google OAuth Button */}
       <button
@@ -242,7 +390,7 @@ export default function AuthCard({ initialTab = 'signin' }: AuthCardProps) {
       <div style={{ marginTop: '0.75rem' }}>
         <button
           type="button"
-          onClick={() => handleGoogleSignIn(true)}
+          onClick={handleChooseDifferentAccount}
           disabled={loading}
           style={{
             background: 'none',

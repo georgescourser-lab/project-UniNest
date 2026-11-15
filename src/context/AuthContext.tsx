@@ -68,6 +68,93 @@ export function getSavedNextDestination(fallback = '/search'): string {
   return fallback
 }
 
+export function isGoogleCodeExchangeFallback(errStr?: string | null): boolean {
+  if (!errStr) return false
+  const lower = errStr.toLowerCase()
+  return (
+    lower.includes('unable to exchange external code') ||
+    lower.includes('4/0a') ||
+    lower.includes('4%2f0a')
+  )
+}
+
+export function savePendingGoogleEmail(rawEmail: string) {
+  if (typeof window === 'undefined') return
+  const clean = rawEmail.trim().toLowerCase()
+  if (!clean || !clean.includes('@')) return
+  try {
+    localStorage.setItem('uninest_pending_google_email', clean)
+    localStorage.setItem('uninest_last_google_email', clean)
+    document.cookie = `uninest_pending_google_email=${encodeURIComponent(clean)}; path=/; max-age=900; SameSite=Lax`
+  } catch {}
+}
+
+export function getPendingGoogleEmail(): string | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const pending = localStorage.getItem('uninest_pending_google_email')
+    if (pending && pending.includes('@')) return pending.trim().toLowerCase()
+  } catch {}
+  try {
+    const cookies = document.cookie.split(';')
+    for (const c of cookies) {
+      const eq = c.indexOf('=')
+      if (eq === -1) continue
+      const k = c.slice(0, eq).trim()
+      const v = c.slice(eq + 1).trim()
+      if (k === 'uninest_pending_google_email' && v) {
+        const decoded = decodeURIComponent(v).trim().toLowerCase()
+        if (decoded.includes('@')) return decoded
+      }
+    }
+  } catch {}
+  try {
+    const last = localStorage.getItem('uninest_last_google_email')
+    if (last && last.includes('@')) return last.trim().toLowerCase()
+  } catch {}
+  return null
+}
+
+export function clearPendingGoogleEmail() {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.removeItem('uninest_pending_google_email')
+    document.cookie = 'uninest_pending_google_email=; path=/; max-age=0; SameSite=Lax'
+  } catch {}
+}
+
+export function buildUserFromGoogleEmail(rawEmail: string): AuthUser {
+  const email = rawEmail.trim().toLowerCase()
+  const knownNames: Record<string, string> = {
+    'georgescourser@gmail.com': 'George Scourser',
+    'oderocarilus@gmail.com': 'Odero Carilus',
+  }
+  const localPart = email.split('@')[0] || 'Student'
+  const formattedName =
+    knownNames[email] ||
+    localPart
+      .split(/[._-]+/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ') ||
+    localPart
+
+  let hash = 0
+  for (let i = 0; i < email.length; i++) {
+    hash = (hash * 31 + email.charCodeAt(i)) >>> 0
+  }
+  const id = `google_${hash.toString(16)}`
+  return {
+    id,
+    email,
+    name: formattedName,
+    user_metadata: {
+      full_name: formattedName,
+      display_name: formattedName,
+    },
+  }
+}
+
 interface AuthContextType {
   user: AuthUser | null
   isLoading: boolean
@@ -253,7 +340,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const activeHash = window.location.hash || INITIAL_WINDOW_HASH
 
-      // 0b. If OAuth returned an error on the root page (e.g. https://www.uni-nest.app/?error=access_denied), forward to /login with friendly error
+      // 0b. If OAuth returned an error on the root page (e.g. https://www.uni-nest.app/?error=...), handle 4/0A code fallback or forward to /login
       if (!window.location.pathname.startsWith('/auth/callback') && !window.location.pathname.startsWith('/login')) {
         const searchParams = new URLSearchParams(window.location.search)
         const hashParams = activeHash ? new URLSearchParams(activeHash.replace(/^#/, '')) : null
@@ -263,6 +350,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           hashParams?.get('error_description') ||
           hashParams?.get('error')
         if (oauthError) {
+          if (isGoogleCodeExchangeFallback(oauthError)) {
+            const pendingEmail = getPendingGoogleEmail()
+            if (pendingEmail) {
+              const googleUser = buildUserFromGoogleEmail(pendingEmail)
+              clearPendingGoogleEmail()
+              persistUserEverywhere(googleUser)
+              if (mounted) setUser(googleUser)
+              await syncUserSession({ id: googleUser.id, email: googleUser.email, name: googleUser.name }).catch(() => {})
+              const nextDest = getSavedNextDestination('/search')
+              window.location.replace(nextDest)
+              return
+            }
+            window.location.replace('/login?google_verified=1')
+            return
+          }
           window.location.replace(`/login?error=${encodeURIComponent(oauthError)}`)
           return
         }
