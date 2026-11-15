@@ -269,7 +269,7 @@
           <div id="uni-auth-alert" style="display: none; padding: 0.75rem 0.9rem; border-radius: 8px; font-size: 0.84rem; margin-bottom: 1rem; line-height: 1.45; text-align: left;"></div>
 
           <!-- Google OAuth Button -->
-          <button type="button" id="uni-google-btn" onclick="window.UniAuth.signInWithGoogle()" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.7rem; padding: 0.85rem 1.25rem; border-radius: 12px; border: 1.5px solid #cbd5e1; background: #ffffff; color: #0f172a; font-weight: 700; font-size: 0.95rem; cursor: pointer; box-shadow: 0 2px 6px rgba(15, 23, 42, 0.05);">
+          <button type="button" id="uni-google-btn" onclick="window.UniAuth.signInWithGoogle(false)" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.7rem; padding: 0.85rem 1.25rem; border-radius: 12px; border: 1.5px solid #cbd5e1; background: #ffffff; color: #0f172a; font-weight: 700; font-size: 0.95rem; cursor: pointer; box-shadow: 0 2px 6px rgba(15, 23, 42, 0.05);">
             <svg width="20" height="20" viewBox="0 0 24 24">
               <path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.4 1 3.5 3.6 1.6 7.4l3.7 2.8C6.2 7.2 8.9 5 12 5z"/>
               <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.6l3.7 2.9c2.2-2 3.7-5 3.7-8.7z"/>
@@ -278,6 +278,12 @@
             </svg>
             Continue with Google
           </button>
+
+          <div style="margin-top: 0.65rem;">
+            <button type="button" onclick="window.UniAuth.signInWithGoogle(true)" style="background: none; border: none; color: #2563eb; font-size: 0.8rem; font-weight: 600; cursor: pointer; text-decoration: underline;">
+              Choose a different Google account
+            </button>
+          </div>
 
           <div style="margin-top: 1.35rem; padding-top: 1rem; border-top: 1px solid #f1f5f9; font-size: 0.78rem; color: #94a3b8;">
             🔒 Verified Google authentication powered by Supabase.
@@ -332,7 +338,20 @@
     }
   }
 
-  async function signInWithGoogle() {
+  function getValidOAuthRedirectUrl(currentOrigin, nextPath) {
+    try {
+      const url = new URL(currentOrigin);
+      if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
+        const port = url.port || '3000';
+        return `http://127.0.0.1:${port}/auth/callback?next=${encodeURIComponent(
+          nextPath || '/search'
+        )}`;
+      }
+    } catch (e) {}
+    return 'https://www.uni-nest.app/';
+  }
+
+  async function signInWithGoogle(selectAccount = false) {
     setAlert(null);
     const btn = document.getElementById('uni-google-btn');
     if (btn) {
@@ -348,17 +367,14 @@
       } catch (e) {}
 
       if (window.supabaseClient && window.supabaseClient.auth) {
-        const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(
-          nextUrl
-        )}`;
+        const redirectTo = getValidOAuthRedirectUrl(window.location.origin, nextUrl);
+        const options = { redirectTo };
+        if (selectAccount) {
+          options.queryParams = { prompt: 'select_account' };
+        }
         const { error } = await window.supabaseClient.auth.signInWithOAuth({
           provider: 'google',
-          options: {
-            redirectTo,
-            queryParams: {
-              prompt: 'select_account',
-            },
-          },
+          options,
         });
         if (error) {
           setAlert(error.message);
@@ -508,12 +524,30 @@
   }
 
   document.addEventListener('DOMContentLoaded', async () => {
+    // Canonicalize localhost -> 127.0.0.1 in local dev so origin matches Supabase allowlist (http://127.0.0.1:*)
+    if (window.location.hostname === 'localhost') {
+      const port = window.location.port ? `:${window.location.port}` : '';
+      const canonicalUrl = `${window.location.protocol}//127.0.0.1${port}${window.location.pathname}${window.location.search}${window.location.hash}`;
+      window.location.replace(canonicalUrl);
+      return;
+    }
+
     currentUser = getStoredUser();
     updateNavbarAuthUI();
     renderNavActions();
 
-    // Check URL hash fragment for Google OAuth implicit flow tokens
+    // Check URL hash fragment for Google OAuth implicit flow tokens or OAuth errors
     const activeHash = window.location.hash || INITIAL_URL_HASH;
+    if (
+      (window.location.search && window.location.search.includes('error=')) ||
+      (activeHash && activeHash.includes('error='))
+    ) {
+      if (window.history && window.history.replaceState) {
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+      showToast('Google sign-in was cancelled or denied. Please try again.', 'error');
+    }
+
     if (activeHash && activeHash.includes('access_token')) {
       try {
         const hashParams = new URLSearchParams(activeHash.replace(/^#/, ''));
@@ -541,6 +575,16 @@
               window.location.pathname + window.location.search
             );
           }
+          try {
+            const savedNext = localStorage.getItem('uninest_auth_next');
+            if (savedNext && savedNext.startsWith('/')) {
+              localStorage.removeItem('uninest_auth_next');
+              if (savedNext !== window.location.pathname) {
+                window.location.replace(savedNext);
+                return;
+              }
+            }
+          } catch (e) {}
         }
       } catch (e) {}
     }

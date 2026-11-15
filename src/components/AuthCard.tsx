@@ -1,14 +1,22 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/utils/supabase/client';
 import { getGoogleOAuthUrl } from '@/app/actions/authActions';
-import { useAuth } from '@/context/AuthContext';
+import { useAuth, getValidOAuthRedirectUrl } from '@/context/AuthContext';
 
 interface AuthCardProps {
   initialTab?: 'signin' | 'signup';
+}
+
+function formatOAuthError(rawError: string | null): string | null {
+  if (!rawError) return null;
+  if (rawError === 'access_denied') {
+    return 'Google sign-in was cancelled or access was denied. Please click "Continue with Google" below and choose an authorized Google account.';
+  }
+  return rawError;
 }
 
 export default function AuthCard({ initialTab = 'signin' }: AuthCardProps) {
@@ -17,9 +25,25 @@ export default function AuthCard({ initialTab = 'signin' }: AuthCardProps) {
   const { user, isVerifiedAgent, logout } = useAuth();
 
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(() => {
+    const queryErr = searchParams.get('error_description') || searchParams.get('error');
+    return formatOAuthError(queryErr);
+  });
 
-  const handleGoogleSignIn = async () => {
+  useEffect(() => {
+    const queryErr = searchParams.get('error_description') || searchParams.get('error');
+    if (queryErr) {
+      setError(formatOAuthError(queryErr));
+    } else if (typeof window !== 'undefined' && window.location.hash.includes('error=')) {
+      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+      const hashErr = hashParams.get('error_description') || hashParams.get('error');
+      if (hashErr) {
+        setError(formatOAuthError(hashErr));
+      }
+    }
+  }, [searchParams]);
+
+  const handleGoogleSignIn = async (selectAccount = false) => {
     setError(null);
     setLoading(true);
     try {
@@ -29,17 +53,22 @@ export default function AuthCard({ initialTab = 'signin' }: AuthCardProps) {
         document.cookie = `uninest_auth_next=${encodeURIComponent(nextParam)}; path=/; max-age=900; SameSite=Lax`;
       } catch {}
 
+      const redirectTo = getValidOAuthRedirectUrl(origin, nextParam);
+
       // Use browser Supabase client first (implicit flow, keeps session & verifier in browser storage)
       try {
         const supabase = createClient();
-        const redirectTo = `${origin}/auth/callback?next=${encodeURIComponent(nextParam)}`;
         const { data, error: oauthErr } = await supabase.auth.signInWithOAuth({
           provider: 'google',
           options: {
             redirectTo,
-            queryParams: {
-              prompt: 'select_account',
-            },
+            ...(selectAccount
+              ? {
+                  queryParams: {
+                    prompt: 'select_account',
+                  },
+                }
+              : {}),
           },
         });
         if (!oauthErr && data?.url) {
@@ -169,7 +198,7 @@ export default function AuthCard({ initialTab = 'signin' }: AuthCardProps) {
       {/* Google OAuth Button */}
       <button
         type="button"
-        onClick={handleGoogleSignIn}
+        onClick={() => handleGoogleSignIn(false)}
         disabled={loading}
         style={{
           width: '100%',
@@ -209,6 +238,26 @@ export default function AuthCard({ initialTab = 'signin' }: AuthCardProps) {
         </svg>
         {loading ? 'Redirecting to Google...' : 'Continue with Google'}
       </button>
+
+      <div style={{ marginTop: '0.75rem' }}>
+        <button
+          type="button"
+          onClick={() => handleGoogleSignIn(true)}
+          disabled={loading}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#2563eb',
+            fontSize: '0.82rem',
+            fontWeight: 600,
+            cursor: loading ? 'not-allowed' : 'pointer',
+            textDecoration: 'underline',
+            padding: '0.25rem 0.5rem',
+          }}
+        >
+          Choose a different Google account
+        </button>
+      </div>
 
       <div
         style={{

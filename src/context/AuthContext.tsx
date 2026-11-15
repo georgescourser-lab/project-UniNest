@@ -25,6 +25,49 @@ export function checkIsVerifiedAgent(email?: string | null): boolean {
   return VERIFIED_AGENT_EMAILS.includes(email.trim().toLowerCase())
 }
 
+/**
+ * Builds an OAuth redirectTo URL that strictly matches the Supabase project's
+ * URI allowlist (`http://127.0.0.1:*` for local dev and `https://www.uni-nest.app/` for production)
+ * so Supabase never rejects redirectTo or falls back to a broken relative path (`/www.uni-nest.app`).
+ */
+export function getValidOAuthRedirectUrl(currentOrigin: string, nextPath = '/search'): string {
+  try {
+    const url = new URL(currentOrigin)
+    if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
+      const port = url.port || '3000'
+      return `http://127.0.0.1:${port}/auth/callback?next=${encodeURIComponent(nextPath)}`
+    }
+  } catch {}
+  return 'https://www.uni-nest.app/'
+}
+
+export function getSavedNextDestination(fallback = '/search'): string {
+  if (typeof window === 'undefined') return fallback
+  try {
+    const savedLocal = localStorage.getItem('uninest_auth_next')
+    if (savedLocal && savedLocal.startsWith('/')) {
+      localStorage.removeItem('uninest_auth_next')
+      document.cookie = 'uninest_auth_next=; path=/; max-age=0; SameSite=Lax'
+      return savedLocal
+    }
+  } catch {}
+  try {
+    const cookies = document.cookie.split(';')
+    for (const c of cookies) {
+      const eq = c.indexOf('=')
+      if (eq === -1) continue
+      const k = c.slice(0, eq).trim()
+      const v = c.slice(eq + 1).trim()
+      if (k === 'uninest_auth_next' && v) {
+        const decoded = decodeURIComponent(v)
+        document.cookie = 'uninest_auth_next=; path=/; max-age=0; SameSite=Lax'
+        if (decoded.startsWith('/')) return decoded
+      }
+    }
+  } catch {}
+  return fallback
+}
+
 interface AuthContextType {
   user: AuthUser | null
   isLoading: boolean
@@ -200,8 +243,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let mounted = true
 
     async function initAuth() {
-      // 1. Check if URL hash contains #access_token (e.g., if Google OAuth redirected to Site URL / or any page)
+      // 0. Canonicalize localhost -> 127.0.0.1 in local dev so origin always matches Supabase allowlist (http://127.0.0.1:*)
+      if (window.location.hostname === 'localhost') {
+        const port = window.location.port ? `:${window.location.port}` : ''
+        const canonicalUrl = `${window.location.protocol}//127.0.0.1${port}${window.location.pathname}${window.location.search}${window.location.hash}`
+        window.location.replace(canonicalUrl)
+        return
+      }
+
       const activeHash = window.location.hash || INITIAL_WINDOW_HASH
+
+      // 0b. If OAuth returned an error on the root page (e.g. https://www.uni-nest.app/?error=access_denied), forward to /login with friendly error
+      if (!window.location.pathname.startsWith('/auth/callback') && !window.location.pathname.startsWith('/login')) {
+        const searchParams = new URLSearchParams(window.location.search)
+        const hashParams = activeHash ? new URLSearchParams(activeHash.replace(/^#/, '')) : null
+        const oauthError =
+          searchParams.get('error_description') ||
+          searchParams.get('error') ||
+          hashParams?.get('error_description') ||
+          hashParams?.get('error')
+        if (oauthError) {
+          window.location.replace(`/login?error=${encodeURIComponent(oauthError)}`)
+          return
+        }
+
+        // 0c. If PKCE ?code=... landed on root (https://www.uni-nest.app/?code=...), forward to /auth/callback
+        const oauthCode = searchParams.get('code')
+        if (oauthCode) {
+          const nextDest = getSavedNextDestination('/search')
+          window.location.replace(`/auth/callback?code=${encodeURIComponent(oauthCode)}&next=${encodeURIComponent(nextDest)}`)
+          return
+        }
+      }
+
+      // 1. Check if URL hash contains #access_token (e.g., if Google OAuth redirected to https://www.uni-nest.app/ or any page)
       if (activeHash && activeHash.includes('access_token')) {
         try {
           const hashParams = new URLSearchParams(activeHash.replace(/^#/, ''))
@@ -242,8 +317,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             // Clean URL hash if not on /auth/callback (callback page handles its own redirect UI)
             if (!window.location.pathname.startsWith('/auth/callback')) {
-              const savedNext = localStorage.getItem('uninest_auth_next')
-              localStorage.removeItem('uninest_auth_next')
+              const savedNext = getSavedNextDestination('')
               if (window.history && window.history.replaceState) {
                 window.history.replaceState(null, '', window.location.pathname + window.location.search)
               }

@@ -9,6 +9,7 @@ import {
   decodeJwtUser,
   persistUserEverywhere,
   getStoredUser,
+  getSavedNextDestination,
   useAuth,
   AuthUser,
 } from '@/context/AuthContext';
@@ -19,16 +20,7 @@ const INITIAL_CALLBACK_HASH =
 
 function resolveNextDestination(queryNext: string | null): string {
   if (queryNext && queryNext.startsWith('/')) return queryNext;
-  if (typeof window !== 'undefined') {
-    try {
-      const saved = localStorage.getItem('uninest_auth_next');
-      if (saved && saved.startsWith('/')) {
-        localStorage.removeItem('uninest_auth_next');
-        return saved;
-      }
-    } catch {}
-  }
-  return '/search';
+  return getSavedNextDestination('/search');
 }
 
 function AuthCallbackContent() {
@@ -77,7 +69,11 @@ function AuthCallbackContent() {
         if (searchError) {
           handledRef.current = true;
           setStatus('error');
-          setMessage(searchError);
+          setMessage(
+            searchError === 'access_denied'
+              ? 'Google sign-in was cancelled or access was denied. Please click below to sign in with an authorized Google account.'
+              : searchError
+          );
           return;
         }
 
@@ -89,7 +85,11 @@ function AuthCallbackContent() {
           if (hashError) {
             handledRef.current = true;
             setStatus('error');
-            setMessage(hashError);
+            setMessage(
+              hashError === 'access_denied'
+                ? 'Google sign-in was cancelled or access was denied. Please click below to sign in with an authorized Google account.'
+                : hashError
+            );
             return;
           }
 

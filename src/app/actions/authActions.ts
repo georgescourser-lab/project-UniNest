@@ -227,7 +227,14 @@ export async function verifyEmailOtpAction(
 
 export async function getGoogleOAuthUrl(origin: string, next: string) {
   const supabase = await createClient()
-  const redirectTo = `${origin}/auth/callback?next=${encodeURIComponent(next)}`
+  let redirectTo = 'https://www.uni-nest.app/'
+  try {
+    const parsed = new URL(origin)
+    if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
+      const port = parsed.port || '3000'
+      redirectTo = `http://127.0.0.1:${port}/auth/callback?next=${encodeURIComponent(next)}`
+    }
+  } catch {}
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
