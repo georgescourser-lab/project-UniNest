@@ -57,8 +57,43 @@
   initDefaultSubmissions();
   initDefaultInquiries();
 
+  let serverMarketplaceItems = [];
+  let isFetchingServerItems = false;
+
+  function syncMarketplaceFromServer(callback) {
+    if (isFetchingServerItems) return;
+    isFetchingServerItems = true;
+    fetch('/api/marketplace')
+      .then(function(res) { return res.ok ? res.json() : null; })
+      .then(function(data) {
+        isFetchingServerItems = false;
+        if (data && Array.isArray(data.items)) {
+          serverMarketplaceItems = data.items;
+          try {
+            localStorage.setItem(STORAGE_KEY_PUBLIC, JSON.stringify(data.items));
+          } catch(e) {}
+          if (typeof callback === 'function') callback(data.items);
+          if (typeof window.__uninestReRenderMarketplace === 'function') {
+            window.__uninestReRenderMarketplace();
+          }
+          initHomepageMarketplace();
+        }
+      })
+      .catch(function(e) {
+        isFetchingServerItems = false;
+        console.warn('Could not sync marketplace from cloud:', e);
+      });
+  }
+
+  // Auto-sync on script load
+  syncMarketplaceFromServer();
+
   // Retrieve public catalog items (Private contact information strictly excluded)
   function getAllItems() {
+    if (serverMarketplaceItems && serverMarketplaceItems.length > 0) {
+      return serverMarketplaceItems;
+    }
+
     let baseItems = [];
     if (window.uniData && Array.isArray(window.uniData.marketplaceItems)) {
       baseItems = window.uniData.marketplaceItems;
@@ -74,8 +109,13 @@
       console.warn('Error reading approved items:', e);
     }
 
-    return [...localApproved, ...baseItems].map(item => {
-      return {
+    const seen = new Set();
+    const result = [];
+    for (const item of [...localApproved, ...baseItems]) {
+      const key = item.listingRef || item.id;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push({
         id: item.id,
         title: item.title,
         category: item.category,
@@ -93,8 +133,9 @@
         description: item.description,
         verifiedListing: true,
         postedAt: item.postedAt || 'Recently'
-      };
-    });
+      });
+    }
+    return result;
   }
 
   function getConditionBadgeClass(condition) {
@@ -290,11 +331,19 @@
         pillsContainer.querySelectorAll('.marketplace-pill').forEach(p => p.classList.remove('active'));
         btn.classList.add('active');
         currentCategory = btn.getAttribute('data-category') || 'All';
-        renderFiltered();
+        window.__uninestReRenderMarketplace = renderFiltered;
+    renderFiltered();
+    syncMarketplaceFromServer(function() {
+      renderFiltered();
+    });
       });
     }
 
+    window.__uninestReRenderMarketplace = renderFiltered;
     renderFiltered();
+    syncMarketplaceFromServer(function() {
+      renderFiltered();
+    });
 
     const urlParams = new URLSearchParams(window.location.search);
     const inspectId = urlParams.get('inspect');
@@ -479,6 +528,15 @@
     } catch (e) {
       console.error('Error saving agent inquiry:', e);
     }
+
+    // Persist to central cloud database across all devices
+    fetch('/api/marketplace/inquiries', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newInquiry),
+    }).catch(function(e) {
+      console.warn('Inquiry cloud post notice:', e);
+    });
 
     closeInquiryModal();
     openConfirmationModal(refCode, newInquiry);
@@ -723,6 +781,22 @@
     } catch (e) {
       console.error('Error saving pending submission:', e);
     }
+
+    // Persist to central cloud database across all devices
+    fetch('/api/marketplace', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(pendingSubmission),
+    })
+      .then(function(res) { return res.json(); })
+      .then(function(cloudRes) {
+        if (cloudRes?.item) {
+          syncMarketplaceFromServer();
+        }
+      })
+      .catch(function(err) {
+        console.warn('Marketplace cloud persistence notice:', err);
+      });
 
     form.reset();
     closePostModal();
@@ -976,6 +1050,26 @@
     }
   }
 
+  function fetchAgentPendingSubmissions(agent, callback) {
+    fetch('/api/marketplace?scope=agent')
+      .then(function(res) { return res.ok ? res.json() : null; })
+      .then(function(data) {
+        if (data && Array.isArray(data.items)) {
+          const pending = data.items.filter(function(i) {
+            return i.status === 'Pending Agent Verification';
+          });
+          try {
+            localStorage.setItem(STORAGE_KEY_PENDING_SUBMISSIONS, JSON.stringify(pending));
+          } catch(e) {}
+          if (typeof callback === 'function') callback(pending);
+          renderAgentVettingQueue(agent);
+        }
+      })
+      .catch(function(e) {
+        console.warn('Agent queue cloud fetch notice:', e);
+      });
+  }
+
   function _doOpenAgentPortal(agent) {
     const modal = document.getElementById('agent-portal-modal');
     if (!modal) return;
@@ -991,6 +1085,9 @@
     switchAgentTab('vetting');
     modal.classList.add('open');
     document.body.style.overflow = 'hidden';
+
+    // Sync submissions from cloud across all devices
+    fetchAgentPendingSubmissions(currentActiveAgent);
   }
 
   function closeAgentPortal() {
@@ -1231,6 +1328,19 @@
     initMarketplacePage();
     initHomepageMarketplace();
 
+    // Persist approval to central cloud database across all devices
+    fetch('/api/marketplace', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'approve', listingRef: listingRef }),
+    })
+      .then(function(res) {
+        if (res.ok) syncMarketplaceFromServer();
+      })
+      .catch(function(err) {
+        console.warn('Marketplace cloud approve notice:', err);
+      });
+
     showToast(`✓ Listing ${listingRef} verified and approved! It is now LIVE on the marketplace with the Agent Verified badge.`);
   }
 
@@ -1244,6 +1354,12 @@
     const slot = prompt(`Enter scheduled date & time for on-site inspection visit (e.g. Tomorrow at 3:00 PM):`);
     if (!slot || !slot.trim()) return;
 
+    fetch('/api/marketplace', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'schedule', listingRef: listingRef, updateData: { slot: slot.trim() } }),
+    }).catch(function(e) {});
+
     showToast(`Inspection visit scheduled for ${listingRef}: ${slot.trim()}. Seller notified via SMS/Email.`);
   }
 
@@ -1255,6 +1371,12 @@
       return;
     }
     if (!confirm(`Are you sure you want to reject submission ${listingRef}? The seller will be notified to correct defects.`)) return;
+
+    fetch('/api/marketplace', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'reject', listingRef: listingRef }),
+    }).catch(function(e) {});
 
     let pending = [];
     try {

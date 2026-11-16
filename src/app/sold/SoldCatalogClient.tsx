@@ -65,6 +65,41 @@ export default function SoldCatalogClient({ serverSoldHouses = [] }: SoldCatalog
     } catch (e) {
       console.warn('Could not read local sold items:', e);
     }
+
+    // Also fetch sold items from central cloud store so other devices see them
+    fetch('/api/marketplace?status=sold')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && Array.isArray(data.items)) {
+          const mapped: SoldListing[] = data.items.map((item: any) => ({
+            id: `cloud-sold-${item.listingRef || item.id}`,
+            title: item.title,
+            kind: 'item' as const,
+            subCategory: item.category || 'Marketplace Item',
+            price: item.price,
+            campus: item.campus,
+            campusName: item.campusName || item.campus,
+            location: item.location,
+            image: item.image,
+            listingRef: item.listingRef || `UN-SOLD-${item.id}`,
+            agentName: item.assignedAgentName || 'Verified UniNest Agent',
+            soldAt: 'Sold',
+            description: item.description,
+            amenitiesOrCondition: [item.condition || 'Verified Listing'],
+          }));
+          setClientSoldItems((prev) => {
+            const combined = [...mapped, ...prev];
+            const seen = new Set<string>();
+            return combined.filter((i) => {
+              const k = i.listingRef || i.id;
+              if (seen.has(k)) return false;
+              seen.add(k);
+              return true;
+            });
+          });
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const allSoldListings = useMemo(() => {

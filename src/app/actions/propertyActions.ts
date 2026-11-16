@@ -8,6 +8,13 @@ import { getCurrentUser } from '@/app/actions/authActions'
 import { revalidatePath } from 'next/cache'
 import { cookies } from 'next/headers'
 import { FALLBACK_PROPERTIES } from '@/data/fallbackProperties'
+import {
+  getCloudDatabase,
+  addCloudProperty,
+  removeCloudProperty,
+  markCloudPropertySold as markStorePropertySold,
+  CloudProperty,
+} from '@/lib/cloudStore'
 
 const SOLD_HOUSES_COOKIE = 'uninest_sold_houses_archive'
 const POSTED_HOUSES_COOKIE = 'uninest_posted_houses_meta'
@@ -191,6 +198,12 @@ export async function getAllProperties(filters?: {
   campuses?: string[]
   location?: string
 }) {
+  let cloudProperties: any[] = []
+  try {
+    const db = await getCloudDatabase()
+    cloudProperties = (db.properties || []).filter((p) => !p.is_sold)
+  } catch {}
+
   let dbProperties: any[] = []
   try {
     const supabase = await createClient()
@@ -228,6 +241,9 @@ export async function getAllProperties(filters?: {
   for (const p of dbProperties) {
     if (p && typeof p.id === 'number') byId.set(p.id, p)
   }
+  for (const p of cloudProperties) {
+    if (p && typeof p.id === 'number') byId.set(p.id, p)
+  }
 
   let merged = Array.from(byId.values()).sort((a, b) => Number(b.id) - Number(a.id))
 
@@ -255,6 +271,18 @@ export async function getAllProperties(filters?: {
 }
 
 export async function getPropertyById(propertyId: number) {
+  try {
+    const db = await getCloudDatabase()
+    const foundCloud = (db.properties || []).find((p) => Number(p.id) === Number(propertyId))
+    if (foundCloud) {
+      return {
+        ...foundCloud,
+        agents: foundCloud.agents || DEFAULT_AGENTS[foundCloud.agent_id || 1] || DEFAULT_AGENTS[1],
+        reviews: [],
+      }
+    }
+  } catch {}
+
   try {
     const supabase = await createClient()
     const { data: propertyData } = await supabase
@@ -435,6 +463,7 @@ export async function addProperty(prevState: any, formData: FormData) {
   const normalizedRent = rent.toLowerCase().startsWith('ksh') ? rent : `Ksh ${rent}`
 
   // 1. Try saving to Supabase `properties` table first
+  let supabaseId: number | null = null
   try {
     const { data: newProperty, error: insertError } = await supabase
       .from('properties')
@@ -454,17 +483,12 @@ export async function addProperty(prevState: any, formData: FormData) {
       .select()
       .single()
 
-    if (!insertError && newProperty) {
-      revalidatePath('/search')
-      revalidatePath('/')
-      return { success: true, propertyId: newProperty.id }
+    if (!insertError && newProperty?.id) {
+      supabaseId = newProperty.id
     }
   } catch {}
 
-  // 2. Fallback when Supabase `properties` table RLS blocks anonymous/cookie-session inserts:
-  // Persist to local/server property store + cookie metadata so the listing is immediately live everywhere
-  const existingLocal = readStoredPostedProperties()
-  const newId = Date.now()
+  const newId = supabaseId || Date.now()
   const resolvedAgent = DEFAULT_AGENTS[agent_id] || agent || DEFAULT_AGENTS[1]
 
   const propertyRecord = {
@@ -482,9 +506,19 @@ export async function addProperty(prevState: any, formData: FormData) {
     videos: uploadedVideoUrls,
     image: allImages[0] || null,
     created_at: new Date().toISOString(),
+    is_sold: false,
   }
 
-  const updatedLocal = [propertyRecord, ...existingLocal]
+  // 2. Persist to live cloud store (Shared across all devices instantly!)
+  try {
+    await addCloudProperty(propertyRecord)
+  } catch (cloudErr) {
+    console.error('Error saving to cloud store:', cloudErr)
+  }
+
+  // 3. Persist to local backup
+  const existingLocal = readStoredPostedProperties()
+  const updatedLocal = [propertyRecord, ...existingLocal.filter((p) => p.id !== newId)]
   writeStoredPostedProperties(updatedLocal)
 
   // Save compact copy to cookie (trimming oversized base64 arrays if > 3KB so cookie stays within browser 4KB limit)
@@ -521,6 +555,7 @@ export async function addProperty(prevState: any, formData: FormData) {
 
   revalidatePath('/search')
   revalidatePath('/')
+  revalidatePath(`/property/${newId}`)
 
   return { success: true, propertyId: newId }
 }
@@ -537,12 +572,20 @@ export async function deleteProperty(propertyId: number) {
     return { error: 'Unauthorized: Only verified agents can delete properties.' }
   }
 
+  // 1. Delete from shared cloud store
+  try {
+    await removeCloudProperty(propertyId)
+  } catch (err) {
+    console.error('Error removing from cloud store:', err)
+  }
+
+  // 2. Delete from Supabase table if present
   try {
     const supabase = await createClient()
     await supabase.from('properties').delete().eq('id', propertyId)
   } catch {}
 
-  // Also remove from local posted properties store & cookie
+  // 3. Also remove from local posted properties store & cookie
   const existingLocal = readStoredPostedProperties()
   const filteredLocal = existingLocal.filter((p) => Number(p.id) !== Number(propertyId))
   writeStoredPostedProperties(filteredLocal)
@@ -574,14 +617,50 @@ export async function deleteProperty(propertyId: number) {
 
 export async function getSoldPropertiesArchive() {
   try {
+    const db = await getCloudDatabase()
+    const soldProps = (db.properties || [])
+      .filter((p) => p.is_sold)
+      .map((p) => ({
+        id: `house-cloud-${p.id}`,
+        title: p.title || 'Student Property',
+        kind: 'house' as const,
+        subCategory: p.type || 'Apartment',
+        price: `${p.rent}`,
+        campus: (p.location || '').includes('KU')
+          ? 'KU'
+          : (p.location || '').includes('JKUAT')
+          ? 'JKUAT'
+          : (p.location || '').includes('UoN')
+          ? 'UoN'
+          : 'Campus',
+        campusName: p.location || 'Campus Area',
+        location: p.location || 'Campus Vicinity',
+        image: p.image || (p.images && p.images[0]) || '/images/property-2.svg',
+        listingRef: `UN-HSE-${String(p.id).slice(-4).padStart(3, '0')}`,
+        agentName: p.agents?.name || 'Verified UniNest Agent',
+        soldAt: 'Recently',
+        description: p.description || 'Verified student accommodation leased through UniNest.',
+        amenitiesOrCondition: p.amenities || ['Verified Listing'],
+      }))
+
     const cookieStore = await cookies()
     const raw = cookieStore.get(SOLD_HOUSES_COOKIE)?.value
+    let cookieSold: any[] = []
     if (raw) {
       const parsed = JSON.parse(decodeURIComponent(raw))
       if (Array.isArray(parsed)) {
-        return parsed
+        cookieSold = parsed
       }
     }
+
+    const merged = [...soldProps, ...cookieSold]
+    const seen = new Set<string>()
+    return merged.filter((item) => {
+      const key = item.listingRef || item.id
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
   } catch (e) {}
   return []
 }
@@ -598,6 +677,9 @@ export async function markPropertyAsSold(propertyId: number) {
   }
 
   try {
+    // 1. Mark as sold in shared cloud store
+    await markStorePropertySold(propertyId)
+
     const targetProp = await getPropertyById(propertyId)
 
     if (targetProp) {
@@ -647,8 +729,6 @@ export async function markPropertyAsSold(propertyId: number) {
         maxAge: THIRTY_DAYS,
       })
     }
-
-    await deleteProperty(propertyId)
 
     revalidatePath('/search')
     revalidatePath('/')

@@ -11,17 +11,42 @@ export default function HomeMarketplaceShowcase() {
   const [liveItems, setLiveItems] = useState<MarketplaceItem[]>(MARKETPLACE_ITEMS);
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem('uninest_posted_marketplace_items');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) {
-          setLiveItems([...parsed, ...MARKETPLACE_ITEMS]);
+    let cancelled = false;
+
+    async function loadLiveMarketplace() {
+      try {
+        const res = await fetch('/api/marketplace');
+        if (res.ok) {
+          const json = await res.json();
+          if (!cancelled && Array.isArray(json?.items) && json.items.length > 0) {
+            setLiveItems(json.items);
+            return;
+          }
         }
+      } catch (e) {
+        console.warn('Error fetching live marketplace items:', e);
       }
-    } catch (e) {
-      console.warn('Error loading marketplace items:', e);
+
+      try {
+        const stored =
+          localStorage.getItem('uninest_posted_marketplace_items') ||
+          localStorage.getItem('uninest_public_marketplace_items');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (!cancelled && Array.isArray(parsed) && parsed.length > 0) {
+            setLiveItems([...parsed, ...MARKETPLACE_ITEMS]);
+          }
+        }
+      } catch (e) {
+        console.warn('Error loading marketplace items:', e);
+      }
     }
+
+    loadLiveMarketplace();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const filteredItems = (activeCategory === 'All'
