@@ -17,6 +17,15 @@ const VERIFIED_AGENT_EMAILS = [
 
 export const dynamic = 'force-dynamic';
 
+function toPublicMarketplaceItem(item: CloudMarketplaceItem): CloudMarketplaceItem {
+  const publicItem = { ...item };
+  delete publicItem.ownerLegalName;
+  delete publicItem.ownerPhone;
+  delete publicItem.ownerEmail;
+  delete publicItem.ownerPrivateAddress;
+  return publicItem;
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -88,10 +97,13 @@ export async function GET(req: NextRequest) {
       filtered = filtered.filter((i) => i.category?.toLowerCase() === categoryFilter.toLowerCase());
     }
 
+    const responseItems =
+      scope === 'agent' ? filtered : filtered.map(toPublicMarketplaceItem);
+
     return NextResponse.json({
       success: true,
-      items: filtered,
-      total: filtered.length,
+      items: responseItems,
+      total: responseItems.length,
       updatedAt: db.updatedAt || new Date().toISOString(),
     });
   } catch (err: any) {
