@@ -540,7 +540,7 @@
 
           <div class="form-group">
             <label class="form-label">Item Photos (Upload Image or Image URL)</label>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 0.5rem;">
+            <div class="item-image-input-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 0.5rem;">
               <div>
                 <label for="item-image-file" style="font-size: 0.8rem; font-weight: 600; color: #475569; display: block; margin-bottom: 0.25rem;">Upload Photo File</label>
                 <input type="file" id="item-image-file" name="item-image-file" class="form-input" accept="image/*" style="padding: 0.4rem; font-size: 0.85rem;" onchange="UniMarketplace.handleItemFilePreview(this)">
@@ -604,7 +604,7 @@
             </div>
           </div>
 
-          <div style="display: flex; gap: 0.75rem; justify-content: flex-end;">
+          <div class="post-item-actions" style="display: flex; gap: 0.75rem; justify-content: flex-end;">
             <button type="button" class="btn btn-secondary" onclick="UniMarketplace.closePostModal()">Cancel</button>
             <button type="submit" class="btn btn-primary" style="padding: 0.75rem 1.5rem;">Submit Listing to Agent</button>
           </div>

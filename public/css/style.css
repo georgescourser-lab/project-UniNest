@@ -1379,6 +1379,8 @@ input:focus, select:focus, textarea:focus {
 .uni-modal-overlay.open {
   display: flex;
   opacity: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .uni-modal-dialog {
@@ -1554,13 +1556,28 @@ input:focus, select:focus, textarea:focus {
   }
 
   .uni-modal-dialog {
+    height: calc(100vh - 1.5rem);
     max-height: calc(100vh - 1.5rem);
+    height: calc(100dvh - 1.5rem);
+    max-height: calc(100dvh - 1.5rem);
     border-radius: 14px;
   }
 
   .uni-modal-header,
   .uni-modal-body {
     padding: 1rem;
+  }
+
+  #post-item-modal .item-image-input-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  #post-item-modal .post-item-actions {
+    flex-direction: column-reverse;
+  }
+
+  #post-item-modal .post-item-actions > * {
+    width: 100%;
   }
 }
 
