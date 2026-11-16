@@ -107,6 +107,10 @@ button, input, select, textarea {
   outline: none;
 }
 
+button, a, select, input[type="checkbox"], input[type="radio"] {
+  touch-action: manipulation;
+}
+
 input:focus, select:focus, textarea:focus {
   outline: none;
 }
@@ -117,6 +121,12 @@ input:focus, select:focus, textarea:focus {
   max-width: var(--max-width);
   margin: 0 auto;
   padding: 0 2rem;
+}
+
+/* Prevent long user-provided values from widening grid and flex layouts. */
+.container, .nav-menu, .hero-content, .hero-image, .property-content,
+.detail-main, .agent-contact-card, .marketplace-card-content {
+  min-width: 0;
 }
 
 .text-primary { color: var(--color-primary); }
@@ -880,6 +890,14 @@ input:focus, select:focus, textarea:focus {
   border-radius: 24px;
   box-shadow: var(--shadow-lg);
   padding: 2rem;
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .auth-card,
+  .nav-menu,
+  .uni-modal-overlay {
+    background: #ffffff;
+  }
 }
 
 .auth-card-header {
@@ -1681,6 +1699,163 @@ input:focus, select:focus, textarea:focus {
 
 .uni-modal-body {
   padding: 1.75rem;
+}
+
+/* Small-screen and cross-browser safeguards. Keep these rules last so they
+   also override page-level layout defaults where necessary. */
+@media (max-width: 640px) {
+  .container {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .navbar {
+    height: 60px;
+  }
+
+  .nav-container {
+    padding: 0 1rem;
+  }
+
+  .nav-menu {
+    top: calc(100% + 0.5rem);
+    max-height: calc(100vh - 76px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .hero {
+    padding-top: 88px;
+    padding-bottom: 2.5rem;
+  }
+
+  .hero-container {
+    gap: 2rem;
+  }
+
+  .hero h1 {
+    font-size: clamp(2rem, 9vw, 2.5rem);
+  }
+
+  .hero p {
+    font-size: 1rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .search-bar-wrapper {
+    margin: 0 auto 1rem;
+  }
+
+  #home-search-form {
+    flex-direction: column;
+    align-items: stretch;
+    border-radius: var(--border-radius);
+    padding: 0.75rem;
+  }
+
+  #home-search-form .search-input-group {
+    width: 100%;
+    flex: none;
+    min-height: 2.75rem;
+    border-right: 0 !important;
+    border-bottom: 1px solid var(--color-gray-light);
+  }
+
+  #home-search-form .search-input-group:last-of-type {
+    border-bottom: 0;
+  }
+
+  #home-search-form .search-btn {
+    width: 100%;
+    margin-left: 0 !important;
+  }
+
+  .section {
+    padding: 3rem 0;
+  }
+
+  .section-title {
+    font-size: clamp(1.75rem, 7vw, 2.25rem);
+  }
+
+  .properties-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+  }
+
+  .property-image {
+    height: 200px;
+  }
+
+  .detail-meta {
+    flex-wrap: wrap;
+  }
+
+  .marketplace-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sold-stats {
+    width: 100%;
+    gap: 0.35rem !important;
+    padding: 1rem !important;
+  }
+
+  .sold-stats > div {
+    min-width: 0;
+  }
+
+  .sold-stats > div:nth-child(2) {
+    padding-left: 0.35rem !important;
+    padding-right: 0.35rem !important;
+  }
+
+  .marketplace-card-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .marketplace-card-actions {
+    width: 100%;
+  }
+
+  .marketplace-card-actions > * {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .uni-modal-overlay {
+    align-items: flex-start;
+    padding: 0.75rem;
+  }
+
+  .uni-modal-dialog {
+    max-height: calc(100dvh - 1.5rem);
+    max-height: calc(100vh - 1.5rem);
+    border-radius: 14px;
+  }
+
+  .uni-modal-header,
+  .uni-modal-body {
+    padding: 1rem;
+  }
+
+  .footer {
+    padding-top: 3rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 
