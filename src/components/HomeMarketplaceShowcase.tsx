@@ -13,13 +13,42 @@ export default function HomeMarketplaceShowcase() {
   useEffect(() => {
     let cancelled = false;
 
+    function getSoldRefs(): Set<string> {
+      const soldRefs = new Set<string>();
+      try {
+        const rawSold = localStorage.getItem('uninest_sold_items');
+        if (rawSold) {
+          const soldArr = JSON.parse(rawSold);
+          if (Array.isArray(soldArr)) {
+            soldArr.forEach((s: any) => {
+              if (s.listingRef) soldRefs.add(String(s.listingRef));
+              if (s.id) soldRefs.add(String(s.id));
+            });
+          }
+        }
+      } catch {}
+      return soldRefs;
+    }
+
+    function filterOutSold(items: MarketplaceItem[]): MarketplaceItem[] {
+      const soldRefs = getSoldRefs();
+      return items.filter((item) => {
+        if ((item as any).status && (item as any).status.toLowerCase() === 'sold') {
+          return false;
+        }
+        if (item.listingRef && soldRefs.has(String(item.listingRef))) return false;
+        if (item.id && soldRefs.has(String(item.id))) return false;
+        return true;
+      });
+    }
+
     async function loadLiveMarketplace() {
       try {
         const res = await fetch('/api/marketplace');
         if (res.ok) {
           const json = await res.json();
           if (!cancelled && Array.isArray(json?.items) && json.items.length > 0) {
-            setLiveItems(json.items);
+            setLiveItems(filterOutSold(json.items));
             return;
           }
         }
@@ -34,18 +63,32 @@ export default function HomeMarketplaceShowcase() {
         if (stored) {
           const parsed = JSON.parse(stored);
           if (!cancelled && Array.isArray(parsed) && parsed.length > 0) {
-            setLiveItems([...parsed, ...MARKETPLACE_ITEMS]);
+            setLiveItems(filterOutSold([...parsed, ...MARKETPLACE_ITEMS]));
+            return;
           }
         }
       } catch (e) {
         console.warn('Error loading marketplace items:', e);
       }
+
+      if (!cancelled) {
+        setLiveItems(filterOutSold(MARKETPLACE_ITEMS));
+      }
     }
 
     loadLiveMarketplace();
 
+    const handleItemSold = () => {
+      loadLiveMarketplace();
+    };
+
+    window.addEventListener('uninest:item-sold', handleItemSold);
+    window.addEventListener('storage', handleItemSold);
+
     return () => {
       cancelled = true;
+      window.removeEventListener('uninest:item-sold', handleItemSold);
+      window.removeEventListener('storage', handleItemSold);
     };
   }, []);
 

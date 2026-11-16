@@ -6,11 +6,15 @@ import { INITIAL_SOLD_LISTINGS, SoldListing } from '@/data/soldListings';
 
 interface SoldCatalogClientProps {
   serverSoldHouses?: SoldListing[];
+  serverSoldItems?: SoldListing[];
 }
 
 const CAMPUSES = ['All', 'KU', 'JKUAT', 'UoN', 'Strathmore', 'USIU', 'Daystar', 'MKU'];
 
-export default function SoldCatalogClient({ serverSoldHouses = [] }: SoldCatalogClientProps) {
+export default function SoldCatalogClient({
+  serverSoldHouses = [],
+  serverSoldItems = [],
+}: SoldCatalogClientProps) {
   const [activeTab, setActiveTab] = useState<'all' | 'house' | 'item'>('all');
   const [selectedCampus, setSelectedCampus] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -103,7 +107,12 @@ export default function SoldCatalogClient({ serverSoldHouses = [] }: SoldCatalog
   }, []);
 
   const allSoldListings = useMemo(() => {
-    const combined = [...serverSoldHouses, ...clientSoldItems, ...INITIAL_SOLD_LISTINGS];
+    const combined = [
+      ...serverSoldHouses,
+      ...serverSoldItems,
+      ...clientSoldItems,
+      ...INITIAL_SOLD_LISTINGS,
+    ];
     const seenRefs = new Set<string>();
     return combined.filter((entry) => {
       const key = entry.listingRef || entry.id;
@@ -111,7 +120,7 @@ export default function SoldCatalogClient({ serverSoldHouses = [] }: SoldCatalog
       seenRefs.add(key);
       return true;
     });
-  }, [serverSoldHouses, clientSoldItems]);
+  }, [serverSoldHouses, serverSoldItems, clientSoldItems]);
 
   const totalHousesSold = useMemo(
     () => allSoldListings.filter((i) => i.kind === 'house').length,

@@ -90,8 +90,34 @@
 
   // Retrieve public catalog items (Private contact information strictly excluded)
   function getAllItems() {
+    const soldRefs = new Set();
+    try {
+      const rawSold = localStorage.getItem('uninest_sold_items');
+      if (rawSold) {
+        const soldArr = JSON.parse(rawSold);
+        if (Array.isArray(soldArr)) {
+          soldArr.forEach(function(s) {
+            if (s.listingRef) soldRefs.add(String(s.listingRef));
+            if (s.id) soldRefs.add(String(s.id));
+          });
+        }
+      }
+    } catch (e) {}
+
+    function isItemSold(item) {
+      if (!item) return true;
+      if (item.status && item.status.toLowerCase() === 'sold') return true;
+      const ref = item.listingRef ? String(item.listingRef) : null;
+      const idStr = item.id != null ? String(item.id) : null;
+      if (ref && soldRefs.has(ref)) return true;
+      if (idStr && soldRefs.has(idStr)) return true;
+      return false;
+    }
+
     if (serverMarketplaceItems && serverMarketplaceItems.length > 0) {
-      return serverMarketplaceItems;
+      return serverMarketplaceItems.filter(function(i) {
+        return !isItemSold(i);
+      });
     }
 
     let baseItems = [];
@@ -112,6 +138,7 @@
     const seen = new Set();
     const result = [];
     for (const item of [...localApproved, ...baseItems]) {
+      if (isItemSold(item)) continue;
       const key = item.listingRef || item.id;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -1412,6 +1439,25 @@
           target.dealUpdate = 'Handover successfully completed under agent supervision. Thank you for using UniNest.';
         }
         localStorage.setItem(STORAGE_KEY_INQUIRIES, JSON.stringify(list));
+
+        // Sync inquiry update to central cloud store
+        fetch('/api/marketplace/inquiries', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            refCode: refCode,
+            status: newStatus,
+            dealUpdate: target.dealUpdate,
+          }),
+        }).catch(function(err) {
+          console.warn('Inquiry sync warning:', err);
+        });
+
+        // AUTOMATIC SOLD INTEGRATION: When handover is marked "Completed", automatically mark item as SOLD and remove from marketplace!
+        if (newStatus === 'Completed' && target.itemId) {
+          markAgentItemSold(target.itemId, target.itemTitle || '');
+        }
+
         renderAgentInquiriesQueue();
         showToast(`Inquiry ${refCode} updated to "${newStatus}"`);
       }
@@ -1523,15 +1569,31 @@
       console.error(e);
     }
 
-    // 2. Also remove from local fallback array in memory if present
+    // 2. Remove from memory arrays immediately
+    serverMarketplaceItems = serverMarketplaceItems.filter(i => !(i.id == itemId || (itemRef && i.listingRef === itemRef)));
     if (window.uniData && Array.isArray(window.uniData.marketplaceItems)) {
       window.uniData.marketplaceItems = window.uniData.marketplaceItems.filter(i => !(i.id == itemId || (itemRef && i.listingRef === itemRef)));
     }
 
-    // 3. Re-render portal and public catalog
+    // 3. Delete from central cloud store
+    const agentEmail = currentAgent.email || (window.UniAuth && window.UniAuth.getCurrentUser && window.UniAuth.getCurrentUser()?.email) || '';
+    const deleteParam = itemRef ? ('ref=' + encodeURIComponent(itemRef)) : ('id=' + encodeURIComponent(itemId));
+    fetch('/api/marketplace?' + deleteParam, {
+      method: 'DELETE',
+      headers: {
+        'x-uninest-agent-email': agentEmail,
+      },
+    }).catch(function(err) {
+      console.warn('Cloud store delete warning:', err);
+    });
+
+    // 4. Re-render portal and public catalog
     renderAgentListingsQueue(currentAgent);
     initMarketplacePage();
     initHomepageMarketplace();
+    if (typeof window.__uninestReRenderMarketplace === 'function') {
+      window.__uninestReRenderMarketplace();
+    }
 
     showToast(`✓ Listing "${targetItem.title}" deleted successfully from your portal.`);
   }
@@ -1546,7 +1608,7 @@
     const allItems = getAllItems();
     const targetItem = allItems.find(i => i.id == itemId || (itemRef && i.listingRef === itemRef));
     if (!targetItem) {
-      showToast('Item not found.', 'error');
+      showToast('Item not found or already sold.', 'error');
       return;
     }
 
@@ -1555,10 +1617,11 @@
       return;
     }
 
+    // 1. Add to local sold archive
     try {
       const rawSold = localStorage.getItem('uninest_sold_items');
       const soldList = rawSold ? JSON.parse(rawSold) : [];
-      soldList.unshift({
+      const soldListing = {
         id: `item-live-${targetItem.id}-${Date.now()}`,
         title: targetItem.title,
         kind: 'item',
@@ -1574,9 +1637,13 @@
         soldAt: 'Just now',
         description: targetItem.description || 'Sold via verified UniNest campus agent.',
         amenitiesOrCondition: [targetItem.condition || 'Verified', 'Agent Handover ✓']
-      });
-      localStorage.setItem('uninest_sold_items', JSON.stringify(soldList));
+      };
+      if (!soldList.some(s => s.listingRef === soldListing.listingRef)) {
+        soldList.unshift(soldListing);
+        localStorage.setItem('uninest_sold_items', JSON.stringify(soldList));
+      }
 
+      // 2. Remove from localStorage STORAGE_KEY_PUBLIC
       const stored = localStorage.getItem(STORAGE_KEY_PUBLIC);
       if (stored) {
         let pubList = JSON.parse(stored);
@@ -1587,14 +1654,47 @@
       console.error(e);
     }
 
+    // 3. Remove immediately from memory arrays
+    serverMarketplaceItems = serverMarketplaceItems.filter(i => !(i.id == itemId || (itemRef && i.listingRef === itemRef)));
     if (window.uniData && Array.isArray(window.uniData.marketplaceItems)) {
       window.uniData.marketplaceItems = window.uniData.marketplaceItems.filter(i => !(i.id == itemId || (itemRef && i.listingRef === itemRef)));
     }
 
+    // 4. Send PATCH to central cloud store so it marks status as 'Sold' and removes it everywhere
+    const agentEmail = currentAgent.email || (window.UniAuth && window.UniAuth.getCurrentUser && window.UniAuth.getCurrentUser()?.email) || '';
+    fetch('/api/marketplace', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-uninest-agent-email': agentEmail,
+      },
+      body: JSON.stringify({
+        action: 'sold',
+        id: itemId,
+        listingRef: itemRef || targetItem.listingRef,
+        itemData: targetItem,
+      }),
+    })
+      .then(function(res) { return res.json(); })
+      .catch(function(err) {
+        console.warn('Could not sync sold status to cloud store:', err);
+      });
+
+    // 5. Notify all components & re-render portal and public catalog
+    try {
+      window.dispatchEvent(new CustomEvent('uninest:item-sold', {
+        detail: { itemId: itemId, listingRef: itemRef || targetItem.listingRef, title: targetItem.title }
+      }));
+    } catch (e) {}
+
     renderAgentListingsQueue(currentAgent);
     initMarketplacePage();
     initHomepageMarketplace();
-    showToast(`✓ "${targetItem.title}" marked as SOLD and added to the Sold Archive (/sold)!`);
+    if (typeof window.__uninestReRenderMarketplace === 'function') {
+      window.__uninestReRenderMarketplace();
+    }
+
+    showToast(`✓ "${targetItem.title}" marked as SOLD and automatically removed from the marketplace. Added to the Sold Archive (/sold)!`);
   }
 
   function promptDealUpdate(refCode) {

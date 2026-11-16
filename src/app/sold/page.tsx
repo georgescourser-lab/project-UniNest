@@ -1,4 +1,6 @@
 import { getSoldPropertiesArchive } from '@/app/actions/propertyActions';
+import { getCloudDatabase } from '@/lib/cloudStore';
+import { SoldListing } from '@/data/soldListings';
 import SoldCatalogClient from './SoldCatalogClient';
 
 export const dynamic = 'force-dynamic';
@@ -9,8 +11,35 @@ export const metadata = {
 };
 
 export default async function SoldPage() {
-  const serverSoldHouses = await getSoldPropertiesArchive();
+  const [serverSoldHouses, db] = await Promise.all([
+    getSoldPropertiesArchive(),
+    getCloudDatabase(),
+  ]);
 
-  return <SoldCatalogClient serverSoldHouses={serverSoldHouses} />;
+  const serverSoldItems: SoldListing[] = (db.marketplace || [])
+    .filter((item) => item.status === 'Sold')
+    .map((item) => ({
+      id: `cloud-sold-${item.listingRef || item.id}`,
+      title: item.title,
+      kind: 'item' as const,
+      subCategory: item.category || 'Marketplace Item',
+      price: item.price,
+      campus: item.campus,
+      campusName: item.campusName || item.campus,
+      location: item.location,
+      image: item.image,
+      listingRef: item.listingRef || `UN-SOLD-${item.id}`,
+      agentName: item.assignedAgentName || 'Verified UniNest Agent',
+      soldAt: 'Sold',
+      description: item.description,
+      amenitiesOrCondition: [item.condition || 'Verified Listing', 'Agent Handover ✓'],
+    }));
+
+  return (
+    <SoldCatalogClient
+      serverSoldHouses={serverSoldHouses}
+      serverSoldItems={serverSoldItems}
+    />
+  );
 }
 
