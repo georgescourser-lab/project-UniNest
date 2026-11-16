@@ -540,6 +540,7 @@
       refCode,
       createdAt: new Date().toISOString(),
       itemId,
+      listingRef: item ? (item.listingRef || `UN-MKT-${item.id}`) : '',
       itemTitle: item ? item.title : 'Marketplace Item',
       itemPrice: item ? item.price : '',
       campus: item ? item.campus : '',
@@ -551,7 +552,8 @@
       preferredHub,
       notes,
       status: 'Pending Agent Review',
-      agentName: item ? item.agentName : 'Authorized UniNest Agent',
+      agentId: item ? (item.agentId || item.assignedAgentId) : null,
+      agentName: item ? (item.agentName || 'Authorized UniNest Agent') : 'Authorized UniNest Agent',
       agentNotes: 'New client inquiry received. Coordinate with seller for accompanied handover.',
       dealUpdate: `Your appointment request has been scheduled with ${item ? item.agentName : 'UniNest Agent'}. You will receive confirmation via SMS/Email once the seller verifies the inspection slot.`
     };
@@ -1364,8 +1366,9 @@
     modal.classList.add('open');
     document.body.style.overflow = 'hidden';
 
-    // Sync submissions from cloud across all devices
+    // Sync submissions and buyer inquiries from cloud across all devices
     fetchAgentPendingSubmissions(currentActiveAgent);
+    fetchAgentInquiries(currentActiveAgent);
   }
 
   function closeAgentPortal() {
@@ -1491,60 +1494,308 @@
     }).join('');
   }
 
-  // Renders Tab 2: Buyer inquiries and accompanied handovers
-  function renderAgentInquiriesQueue() {
+  function formatPhoneForWhatsApp(phone) {
+    if (!phone) return '';
+    let clean = String(phone).replace(/[^0-9]/g, '');
+    if (clean.startsWith('0')) {
+      clean = '254' + clean.slice(1);
+    } else if (clean.startsWith('7') || clean.startsWith('1')) {
+      clean = '254' + clean;
+    }
+    return clean;
+  }
+
+  function fetchAgentInquiries(agent, callback) {
+    fetch('/api/marketplace/inquiries')
+      .then(function(res) { return res.ok ? res.json() : null; })
+      .then(function(data) {
+        if (data && Array.isArray(data.inquiries)) {
+          try {
+            const rawStored = localStorage.getItem(STORAGE_KEY_INQUIRIES);
+            const localList = rawStored ? JSON.parse(rawStored) : [];
+            const seen = new Set();
+            const merged = [];
+
+            // Cloud inquiries take precedence
+            for (const inq of data.inquiries) {
+              const k = (inq.refCode || '').toUpperCase();
+              if (seen.has(k)) continue;
+              seen.add(k);
+              merged.push(inq);
+            }
+
+            for (const inq of localList) {
+              const k = (inq.refCode || '').toUpperCase();
+              if (seen.has(k)) continue;
+              seen.add(k);
+              merged.push(inq);
+            }
+
+            localStorage.setItem(STORAGE_KEY_INQUIRIES, JSON.stringify(merged));
+          } catch (e) {}
+
+          const currentAgent = agent || currentActiveAgent || getCurrentVerifiedAgent();
+          if (currentAgentTab === 'inquiries') {
+            renderAgentInquiriesQueue(currentAgent);
+          } else if (currentAgentTab === 'listings') {
+            renderAgentListingsQueue(currentAgent);
+          }
+
+          if (typeof callback === 'function') callback();
+        }
+      })
+      .catch(function(err) {
+        console.warn('Could not sync inquiries from cloud:', err);
+        if (typeof callback === 'function') callback();
+      });
+  }
+
+  let activeListingInquiryFilter = 'all';
+
+  function filterInquiriesByListing(listingId) {
+    activeListingInquiryFilter = listingId;
+    renderAgentInquiriesQueue(currentActiveAgent, listingId);
+  }
+
+  // Renders Tab 2: Buyer inquiries and accompanied handovers (with integrated assigned listings)
+  function renderAgentInquiriesQueue(agent, filterListingId) {
     const container = document.getElementById('agent-portal-inquiries-list');
     if (!container) return;
 
-    let inquiries = [];
+    if (!agent) agent = currentActiveAgent || getCurrentVerifiedAgent();
+    if (!agent) {
+      container.innerHTML = '<p style="text-align: center; color: #dc2626; padding: 2rem;">Unauthorized. Please sign in as a verified agent.</p>';
+      return;
+    }
+
+    if (filterListingId !== undefined) {
+      activeListingInquiryFilter = filterListingId;
+    }
+
+    let allInquiries = [];
     try {
       const stored = localStorage.getItem(STORAGE_KEY_INQUIRIES);
-      if (stored) inquiries = JSON.parse(stored);
+      if (stored) allInquiries = JSON.parse(stored);
     } catch (e) {
       console.error(e);
     }
 
-    const badge = document.getElementById('badge-inquiries-count');
-    if (badge) badge.textContent = inquiries.length;
+    const allPublic = getAllItems();
+    const agentListings = allPublic.filter(item => isItemAssignedToAgent(item, agent));
 
-    if (!inquiries.length) {
-      container.innerHTML = '<p style="text-align: center; color: #64748b; padding: 2rem;">No buyer inquiries in queue.</p>';
+    // Inquiries that belong to this agent's assigned listings or explicitly assigned to this agent
+    const relevantInquiries = allInquiries.filter(inq => {
+      // 1. Direct match with agent's assigned items
+      const matchesAgentItem = agentListings.some(item => 
+        (inq.itemId && (item.id == inq.itemId)) ||
+        (inq.listingRef && item.listingRef === inq.listingRef) ||
+        (inq.itemTitle && item.title && inq.itemTitle.toLowerCase() === item.title.toLowerCase())
+      );
+      if (matchesAgentItem) return true;
+
+      // 2. Direct agent name / id match
+      if (inq.agentId && (inq.agentId === agent.id || inq.agentId == agent.id)) return true;
+      if (inq.agentName && agent.name && inq.agentName.toLowerCase().includes(agent.name.toLowerCase().split(' ')[0])) return true;
+
+      // 3. For lead agents (George & Odero), show all campus inquiries so nothing is missed
+      if (agent.isLead) return true;
+
+      return false;
+    });
+
+    const badge = document.getElementById('badge-inquiries-count');
+    if (badge) badge.textContent = relevantInquiries.length;
+
+    // Apply active listing filter if selected
+    let displayedInquiries = relevantInquiries;
+    if (activeListingInquiryFilter && activeListingInquiryFilter !== 'all') {
+      displayedInquiries = relevantInquiries.filter(inq => 
+        (inq.itemId && String(inq.itemId) === String(activeListingInquiryFilter)) ||
+        (inq.listingRef && inq.listingRef === activeListingInquiryFilter)
+      );
+    }
+
+    // Build filter dropdown options
+    const filterOptions = [
+      `<option value="all">🌟 All Buyer Inquiries (${relevantInquiries.length})</option>`,
+      ...agentListings.map(item => {
+        const count = relevantInquiries.filter(inq => 
+          (inq.itemId && item.id == inq.itemId) || 
+          (inq.listingRef && item.listingRef === inq.listingRef) ||
+          (inq.itemTitle && item.title && inq.itemTitle.toLowerCase() === item.title.toLowerCase())
+        ).length;
+        const selected = (String(activeListingInquiryFilter) === String(item.id) || activeListingInquiryFilter === item.listingRef) ? 'selected' : '';
+        return `<option value="${item.id}" ${selected}>📦 ${item.title} (${item.price}) • [${count} buyer(s)]</option>`;
+      })
+    ].join('');
+
+    const filterBarHtml = `
+      <div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1.25rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
+          <div>
+            <div style="font-size: 0.82rem; font-weight: 700; color: #1e293b; text-transform: uppercase; letter-spacing: 0.5px;">
+              Assigned Listings Integration
+            </div>
+            <div style="font-size: 0.85rem; color: #64748b;">
+              View client contact details and manage handovers for your supervised listings.
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+            <label for="agent-inquiries-filter-select" style="font-size: 0.85rem; font-weight: 600; color: #334155;">Filter by Item:</label>
+            <select id="agent-inquiries-filter-select" onchange="UniMarketplace.filterInquiriesByListing(this.value)" style="padding: 0.45rem 0.85rem; border-radius: 8px; border: 1.5px solid #cbd5e1; font-size: 0.85rem; background: #ffffff; color: #0f172a; font-weight: 600; min-width: 220px;">
+              ${filterOptions}
+            </select>
+          </div>
+        </div>
+      </div>
+    `;
+
+    if (!displayedInquiries.length) {
+      container.innerHTML = `
+        ${filterBarHtml}
+        <div style="text-align: center; padding: 3rem 1.5rem; background: #ffffff; border-radius: 12px; border: 1.5px dashed #cbd5e1;">
+          <div style="font-size: 2rem; margin-bottom: 0.5rem;">🤝</div>
+          <h4 style="color: #0f172a; margin: 0 0 0.35rem 0;">No Inquiries Found for this Filter</h4>
+          <p style="color: #64748b; font-size: 0.88rem; margin: 0;">
+            ${activeListingInquiryFilter !== 'all' ? 'No buyers have inquired about this specific listing yet.' : 'There are currently no buyer inquiries registered for your portal.'}
+          </p>
+          ${activeListingInquiryFilter !== 'all' ? `
+            <button type="button" class="btn btn-secondary" onclick="UniMarketplace.filterInquiriesByListing('all')" style="margin-top: 1rem; font-size: 0.85rem; padding: 0.45rem 1rem;">
+              View All Inquiries
+            </button>
+          ` : ''}
+        </div>
+      `;
       return;
     }
 
-    container.innerHTML = inquiries.map(inq => {
-      return `
-        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1.25rem; margin-bottom: 1.25rem;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;">
-            <div>
-              <span style="font-weight: 700; color: #0f172a; font-size: 1.05rem;">${inq.refCode}</span>
-              <span style="font-size: 0.85rem; color: #64748b; margin-left: 0.5rem;">${inq.itemTitle} (${inq.itemPrice})</span>
+    container.innerHTML = `
+      ${filterBarHtml}
+      <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+        ${displayedInquiries.map(inq => {
+          // Find matched listing
+          const matchedItem = agentListings.find(item => 
+            (inq.itemId && (item.id == inq.itemId)) ||
+            (inq.listingRef && item.listingRef === inq.listingRef) ||
+            (inq.itemTitle && item.title && inq.itemTitle.toLowerCase() === item.title.toLowerCase())
+          ) || allPublic.find(item => 
+            (inq.itemId && (item.id == inq.itemId)) ||
+            (inq.listingRef && item.listingRef === inq.listingRef) ||
+            (inq.itemTitle && item.title && inq.itemTitle.toLowerCase() === item.title.toLowerCase())
+          );
+
+          const isCompleted = (inq.status || '').toLowerCase() === 'completed';
+          const isConfirmed = isCompleted || (inq.status || '').toLowerCase().includes('confirmed');
+
+          const statusBg = isCompleted ? '#dcfce7' : isConfirmed ? '#dbeafe' : '#fef3c7';
+          const statusColor = isCompleted ? '#15803d' : isConfirmed ? '#1d4ed8' : '#b45309';
+          const statusBorder = isCompleted ? '#86efac' : isConfirmed ? '#93c5fd' : '#fde68a';
+
+          const waPhone = formatPhoneForWhatsApp(inq.clientPhone);
+          const waMessage = `Hello ${inq.clientName}, I am ${agent.name}, your assigned UniNest Agent for "${inq.itemTitle}" (Ref: ${inq.refCode}). I am reaching out to coordinate your accompanied handover.`;
+
+          return `
+            <div style="background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 14px; padding: 1.35rem; box-shadow: 0 2px 8px rgba(0,0,0,0.03);">
+              <!-- Top Row: Ref and Status -->
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.85rem; flex-wrap: wrap; gap: 0.5rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                  <span style="font-family: monospace; font-size: 0.82rem; font-weight: 700; color: #2563eb; background: #eff6ff; padding: 0.25rem 0.6rem; border-radius: 6px; border: 1px solid #bfdbfe;">
+                    ${inq.refCode}
+                  </span>
+                  <span style="font-size: 0.85rem; color: #64748b;">Submitted ${inq.createdAt ? new Date(inq.createdAt).toLocaleDateString() : 'Recently'}</span>
+                </div>
+                <span style="font-size: 0.8rem; font-weight: 700; padding: 0.3rem 0.8rem; border-radius: 9999px; background: ${statusBg}; color: ${statusColor}; border: 1px solid ${statusBorder};">
+                  ${inq.status || 'Pending Review'}
+                </span>
+              </div>
+
+              <!-- Matched Assigned Listing Banner -->
+              ${matchedItem ? `
+                <div style="background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 10px; padding: 0.85rem 1rem; margin-bottom: 1rem; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                  <img src="${matchedItem.image}" alt="${matchedItem.title}" style="width: 60px; height: 60px; object-fit: cover; border-radius: 8px; border: 1px solid #cbd5e1; flex-shrink: 0;">
+                  <div style="flex: 1; min-width: 200px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.35rem;">
+                      <span style="font-size: 0.72rem; font-weight: 700; color: #2563eb; text-transform: uppercase;">
+                        Assigned Item: ${matchedItem.listingRef || 'UN-MKT-' + matchedItem.id}
+                      </span>
+                      <span style="font-size: 0.72rem; background: #dcfce7; color: #166534; font-weight: 700; padding: 0.15rem 0.5rem; border-radius: 9999px;">
+                        ✓ Supervised on your portal
+                      </span>
+                    </div>
+                    <h4 style="margin: 0.15rem 0; font-size: 1.05rem; color: #0f172a;">${matchedItem.title}</h4>
+                    <div style="font-size: 0.88rem; color: #475569; font-weight: 600;">
+                      ${matchedItem.price} <span style="font-size: 0.8rem; font-weight: normal; color: #64748b;">• Campus: ${matchedItem.campus || 'General Campus'} • Hub: ${matchedItem.location || 'Campus Center'}</span>
+                    </div>
+                  </div>
+                </div>
+              ` : `
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.65rem 0.85rem; margin-bottom: 1rem; font-size: 0.88rem; color: #334155;">
+                  <strong>Listing Target:</strong> ${inq.itemTitle} ${inq.itemPrice ? `(${inq.itemPrice})` : ''}
+                </div>
+              `}
+
+              <!-- Client / Buyer Contact Box -->
+              <div style="background: #ffffff; border: 1.5px solid #cbd5e1; border-radius: 10px; padding: 1.15rem; margin-bottom: 1rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;">
+                  <div style="display: flex; align-items: center; gap: 0.6rem;">
+                    <div style="width: 38px; height: 38px; border-radius: 50%; background: #2563eb; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1rem;">
+                      ${(inq.clientName || 'C').charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <div style="font-size: 1.05rem; font-weight: 700; color: #0f172a;">${inq.clientName}</div>
+                      <div style="font-size: 0.78rem; color: #64748b;">Prospective Buyer / Client Details</div>
+                    </div>
+                  </div>
+
+                  <!-- Direct Call & WhatsApp Action Buttons -->
+                  <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    <a href="tel:${inq.clientPhone}" class="btn btn-secondary" style="padding: 0.4rem 0.85rem; font-size: 0.82rem; text-decoration: none; display: inline-flex; align-items: center; gap: 0.4rem; font-weight: 600;">
+                      📞 Call ${inq.clientPhone}
+                    </a>
+                    <a href="https://wa.me/${waPhone}?text=${encodeURIComponent(waMessage)}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="padding: 0.4rem 0.85rem; font-size: 0.82rem; background: #25D366; color: #ffffff; border-color: #22c55e; text-decoration: none; display: inline-flex; align-items: center; gap: 0.4rem; font-weight: 600;">
+                      💬 Chat on WhatsApp
+                    </a>
+                    <a href="mailto:${inq.clientEmail}?subject=UniNest%20Handover%20Inquiry%20(${encodeURIComponent(inq.refCode)})" class="btn btn-secondary" style="padding: 0.4rem 0.85rem; font-size: 0.82rem; text-decoration: none; display: inline-flex; align-items: center; gap: 0.4rem;">
+                      ✉️ Email
+                    </a>
+                  </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.65rem; font-size: 0.85rem; padding-top: 0.65rem; border-top: 1px solid #f1f5f9;">
+                  <div><strong>Phone:</strong> <a href="tel:${inq.clientPhone}" style="color: #2563eb; font-weight: 600;">${inq.clientPhone}</a></div>
+                  <div><strong>Email:</strong> <a href="mailto:${inq.clientEmail}" style="color: #2563eb;">${inq.clientEmail}</a></div>
+                  <div><strong>Requested Slot:</strong> ${inq.preferredDate} (${inq.preferredTime})</div>
+                  <div><strong>Handover Point:</strong> ${inq.preferredHub}</div>
+                </div>
+
+                ${inq.notes ? `
+                  <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.65rem 0.85rem; margin-top: 0.75rem; font-size: 0.82rem; color: #334155;">
+                    <strong>Client Note:</strong> "${inq.notes}"
+                  </div>
+                ` : ''}
+
+                <div style="background: #eff6ff; border-left: 3px solid #2563eb; padding: 0.55rem 0.85rem; border-radius: 0 6px 6px 0; font-size: 0.82rem; color: #1e3a8a; margin-top: 0.75rem;">
+                  <strong>Agent Update Dispatched:</strong> ${inq.dealUpdate || 'Request received. Waiting for agent confirmation.'}
+                </div>
+              </div>
+
+              <!-- Deal Control Actions -->
+              <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+                <button type="button" class="btn btn-primary" onclick="UniMarketplace.updateInquiryByAgent('${inq.refCode}', 'Agent Confirmed')" style="padding: 0.5rem 1rem; font-size: 0.85rem; font-weight: 600;">
+                  ✓ Confirm Handover Slot
+                </button>
+                <button type="button" class="btn btn-secondary" onclick="UniMarketplace.updateInquiryByAgent('${inq.refCode}', 'Completed')" style="padding: 0.5rem 1rem; font-size: 0.85rem; background: #dcfce7; border-color: #86efac; color: #15803d; font-weight: 600;">
+                  🤝 Mark Handover Done & Sold
+                </button>
+                <button type="button" class="btn btn-secondary" onclick="UniMarketplace.promptDealUpdate('${inq.refCode}')" style="padding: 0.5rem 1rem; font-size: 0.85rem;">
+                  📢 Send Deal Update
+                </button>
+              </div>
             </div>
-            <span style="font-size: 0.82rem; font-weight: 600; padding: 0.25rem 0.65rem; border-radius: 9999px; background: #e0f2fe; color: #0369a1;">
-              ${inq.status}
-            </span>
-          </div>
-
-          <div style="background: #f8fafc; border-radius: 8px; padding: 0.85rem 1rem; margin-bottom: 0.85rem; font-size: 0.85rem;">
-            <strong>Buyer Details:</strong> ${inq.clientName} • Phone: <a href="tel:${inq.clientPhone}" style="color: #2563eb;">${inq.clientPhone}</a> • Email: ${inq.clientEmail}<br>
-            <strong>Requested Slot:</strong> ${inq.preferredDate} (${inq.preferredTime}) at <em>${inq.preferredHub}</em>
-            ${inq.notes ? `<div style="margin-top: 0.25rem; color: #475569;">Note: "${inq.notes}"</div>` : ''}
-          </div>
-
-          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-            <button type="button" class="btn btn-primary" onclick="UniMarketplace.updateInquiryByAgent('${inq.refCode}', 'Agent Confirmed')" style="padding: 0.45rem 0.85rem; font-size: 0.82rem;">
-              ✓ Confirm Handover Slot
-            </button>
-            <button type="button" class="btn btn-secondary" onclick="UniMarketplace.updateInquiryByAgent('${inq.refCode}', 'Completed')" style="padding: 0.45rem 0.85rem; font-size: 0.82rem;">
-              Mark Handover Done
-            </button>
-            <button type="button" class="btn btn-secondary" onclick="UniMarketplace.promptDealUpdate('${inq.refCode}')" style="padding: 0.45rem 0.85rem; font-size: 0.82rem;">
-              Send Deal Update
-            </button>
-          </div>
-        </div>
-      `;
-    }).join('');
+          `;
+        }).join('')}
+      </div>
+    `;
   }
 
   // AGENT ACTION: Verify & Approve -> Publishes the item to the public catalog
@@ -1717,7 +1968,7 @@
     }
   }
 
-  // Renders Tab 3: Active listings assigned to this agent (with Agent Deletion Manager)
+  // Renders Tab 3: Active listings assigned to this agent (with integrated buyer inquiries & client details)
   function renderAgentListingsQueue(agent) {
     const container = document.getElementById('agent-portal-listings-list');
     if (!container) return;
@@ -1735,6 +1986,14 @@
     // Filter strictly to items assigned to THIS agent!
     const agentItems = allPublic.filter(item => isItemAssignedToAgent(item, agent));
 
+    let allInquiries = [];
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY_INQUIRIES);
+      if (stored) allInquiries = JSON.parse(stored);
+    } catch (e) {
+      console.error(e);
+    }
+
     const badge = document.getElementById('badge-listings-count');
     if (badge) badge.textContent = agentItems.length;
 
@@ -1750,29 +2009,128 @@
 
     container.innerHTML = `
       <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 0.75rem 1rem; margin-bottom: 1.25rem; font-size: 0.85rem; color: #166534;">
-        🛡️ <strong>Agent Ownership Protection:</strong> You are viewing <strong>${agentItems.length} active listings</strong> assigned to your portal. Only you can delete or modify these items. Items assigned to other campus agents are strictly protected and cannot be deleted from your portal.
+        🛡️ <strong>Assigned Listings & Inquiries Hub:</strong> You are managing <strong>${agentItems.length} active listings</strong> assigned to your portal (${agent.name}). Buyer inquiries and client contact details are linked directly below each item.
       </div>
-      ${agentItems.map(item => `
-        <div style="background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 1.25rem; margin-bottom: 1rem; display: flex; gap: 1rem; align-items: center; justify-content: space-between; flex-wrap: wrap;">
-          <div style="display: flex; gap: 1rem; align-items: center;">
-            <img src="${item.image}" alt="${item.title}" style="width: 72px; height: 72px; object-fit: cover; border-radius: 8px; border: 1px solid #cbd5e1;">
-            <div>
-              <div style="font-size: 0.75rem; font-weight: 700; color: #2563eb; text-transform: uppercase;">Ticket: ${item.listingRef || 'UN-MKT-' + item.id}</div>
-              <h4 style="font-size: 1rem; color: #0f172a; margin: 0.15rem 0;">${item.title}</h4>
-              <div style="font-weight: 700; color: #0f172a; font-size: 0.95rem;">${item.price} <span style="font-size: 0.8rem; color: #64748b; font-weight: normal;">• Campus: ${item.campus || 'General'}</span></div>
-              <div style="font-size: 0.78rem; color: #16a34a; font-weight: 600; margin-top: 0.2rem;">✓ Supervised by: ${agent.name}</div>
+      ${agentItems.map(item => {
+        // Find matching inquiries for this item
+        const itemInquiries = allInquiries.filter(inq => 
+          (inq.itemId && (item.id == inq.itemId)) ||
+          (inq.listingRef && item.listingRef === inq.listingRef) ||
+          (inq.itemTitle && item.title && inq.itemTitle.toLowerCase() === item.title.toLowerCase())
+        );
+
+        return `
+          <div style="background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 14px; padding: 1.35rem; margin-bottom: 1.25rem; box-shadow: 0 2px 8px rgba(0,0,0,0.03);">
+            <!-- Listing Header & Actions -->
+            <div style="display: flex; gap: 1rem; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; margin-bottom: 1rem;">
+              <div style="display: flex; gap: 1rem; align-items: center;">
+                <img src="${item.image}" alt="${item.title}" style="width: 76px; height: 76px; object-fit: cover; border-radius: 10px; border: 1px solid #cbd5e1; flex-shrink: 0;">
+                <div>
+                  <div style="font-size: 0.75rem; font-weight: 700; color: #2563eb; text-transform: uppercase;">Ticket: ${item.listingRef || 'UN-MKT-' + item.id}</div>
+                  <h4 style="font-size: 1.1rem; color: #0f172a; margin: 0.15rem 0;">${item.title}</h4>
+                  <div style="font-weight: 700; color: #0f172a; font-size: 1rem;">${item.price} <span style="font-size: 0.82rem; color: #64748b; font-weight: normal;">• Campus: ${item.campus || 'General'} • ${item.location || 'Campus Center'}</span></div>
+                  <div style="font-size: 0.78rem; color: #16a34a; font-weight: 600; margin-top: 0.2rem;">✓ Supervised by: ${agent.name}</div>
+                </div>
+              </div>
+              <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                <button type="button" class="btn btn-primary" onclick="UniMarketplace.markAgentItemSold(${item.id}, '${item.listingRef || ''}')" style="background: #dcfce7; border: 1px solid #86efac; color: #15803d; font-size: 0.85rem; padding: 0.5rem 1rem; font-weight: 600; border-radius: 9999px; cursor: pointer;">
+                  ✓ Mark as Sold
+                </button>
+                <button type="button" class="btn btn-secondary" onclick="UniMarketplace.deleteAgentItem(${item.id}, '${item.listingRef || ''}')" style="background: #fee2e2; border-color: #fca5a5; color: #dc2626; font-size: 0.85rem; padding: 0.5rem 1rem; font-weight: 600; border-radius: 9999px; cursor: pointer;">
+                  🗑️ Delete Item
+                </button>
+              </div>
+            </div>
+
+            <!-- Integrated Buyer Inquiries & Client Details Section -->
+            <div style="border-top: 1.5px solid #f1f5f9; padding-top: 1rem; margin-top: 0.5rem;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                  <span style="font-size: 0.95rem; font-weight: 700; color: #0f172a;">👥 Interested Clients (${itemInquiries.length})</span>
+                  ${itemInquiries.length > 0 ? `
+                    <span style="font-size: 0.75rem; font-weight: 700; background: #e0f2fe; color: #0284c7; padding: 0.15rem 0.55rem; border-radius: 9999px;">
+                      ${itemInquiries.length} Active Inquiry(ies)
+                    </span>
+                  ` : ''}
+                </div>
+                ${itemInquiries.length > 0 ? `
+                  <button type="button" class="btn btn-secondary" onclick="UniMarketplace.switchAgentTab('inquiries'); UniMarketplace.filterInquiriesByListing('${item.id}');" style="padding: 0.35rem 0.75rem; font-size: 0.78rem;">
+                    Focus in Inquiries Tab &rarr;
+                  </button>
+                ` : ''}
+              </div>
+
+              ${itemInquiries.length > 0 ? `
+                <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                  ${itemInquiries.map(inq => {
+                    const isCompleted = (inq.status || '').toLowerCase() === 'completed';
+                    const isConfirmed = isCompleted || (inq.status || '').toLowerCase().includes('confirmed');
+                    const badgeBg = isCompleted ? '#dcfce7' : isConfirmed ? '#dbeafe' : '#fef3c7';
+                    const badgeColor = isCompleted ? '#15803d' : isConfirmed ? '#1d4ed8' : '#b45309';
+                    const badgeBorder = isCompleted ? '#86efac' : isConfirmed ? '#93c5fd' : '#fde68a';
+
+                    const waPhone = formatPhoneForWhatsApp(inq.clientPhone);
+                    const waMessage = `Hello ${inq.clientName}, I am ${agent.name}, your UniNest Agent regarding "${item.title}" (${inq.refCode}). I am contacting you to coordinate your accompanied handover.`;
+
+                    return `
+                      <div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 1rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.6rem; flex-wrap: wrap; gap: 0.5rem;">
+                          <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <div style="width: 32px; height: 32px; border-radius: 50%; background: #2563eb; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem;">
+                              ${(inq.clientName || 'C').charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                              <strong style="font-size: 0.98rem; color: #0f172a;">${inq.clientName}</strong>
+                              <span style="font-family: monospace; font-size: 0.75rem; color: #64748b; margin-left: 0.35rem;">(${inq.refCode})</span>
+                            </div>
+                          </div>
+                          <span style="font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.6rem; border-radius: 9999px; background: ${badgeBg}; color: ${badgeColor}; border: 1px solid ${badgeBorder};">
+                            ${inq.status || 'Pending Review'}
+                          </span>
+                        </div>
+
+                        <!-- Client Contact Details & Direct Connect -->
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.5rem; font-size: 0.84rem; margin-bottom: 0.65rem;">
+                          <div>📞 <strong>Phone:</strong> <a href="tel:${inq.clientPhone}" style="color: #2563eb; font-weight: 600;">${inq.clientPhone}</a></div>
+                          <div>✉️ <strong>Email:</strong> <a href="mailto:${inq.clientEmail}" style="color: #2563eb;">${inq.clientEmail}</a></div>
+                          <div>📅 <strong>Requested Slot:</strong> ${inq.preferredDate} (${inq.preferredTime})</div>
+                          <div>📍 <strong>Handover Hub:</strong> ${inq.preferredHub}</div>
+                        </div>
+
+                        ${inq.notes ? `
+                          <div style="background: #ffffff; border: 1px solid #e2e8f0; padding: 0.45rem 0.65rem; border-radius: 6px; font-size: 0.8rem; color: #334155; margin-bottom: 0.65rem;">
+                            <strong>Client Note:</strong> "${inq.notes}"
+                          </div>
+                        ` : ''}
+
+                        <!-- Quick Communication & Handover Actions -->
+                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; padding-top: 0.5rem; border-top: 1px solid #e2e8f0;">
+                          <a href="tel:${inq.clientPhone}" class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem; text-decoration: none; display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 600;">
+                            📞 Call Client
+                          </a>
+                          <a href="https://wa.me/${waPhone}?text=${encodeURIComponent(waMessage)}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem; background: #25D366; color: #ffffff; border-color: #22c55e; text-decoration: none; display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 600;">
+                            💬 WhatsApp Client
+                          </a>
+                          <button type="button" class="btn btn-primary" onclick="UniMarketplace.updateInquiryByAgent('${inq.refCode}', 'Agent Confirmed')" style="padding: 0.35rem 0.75rem; font-size: 0.8rem; font-weight: 600;">
+                            ✓ Confirm Slot
+                          </button>
+                          <button type="button" class="btn btn-secondary" onclick="UniMarketplace.updateInquiryByAgent('${inq.refCode}', 'Completed')" style="padding: 0.35rem 0.75rem; font-size: 0.8rem; background: #dcfce7; border-color: #86efac; color: #15803d; font-weight: 600;">
+                            🤝 Complete Handover
+                          </button>
+                        </div>
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+              ` : `
+                <div style="font-size: 0.82rem; color: #64748b; background: #f8fafc; padding: 0.75rem 1rem; border-radius: 8px; border: 1px dashed #cbd5e1;">
+                  ℹ️ No buyer inquiries placed yet for this item. As soon as a student requests an inspection or handover, their contact details (Name, Phone, WhatsApp, and Slot) will appear right here.
+                </div>
+              `}
             </div>
           </div>
-          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-            <button type="button" class="btn btn-primary" onclick="UniMarketplace.markAgentItemSold(${item.id}, '${item.listingRef || ''}')" style="background: #dcfce7; border: 1px solid #86efac; color: #15803d; font-size: 0.85rem; padding: 0.5rem 1rem; font-weight: 600; border-radius: 9999px; cursor: pointer;">
-              ✓ Mark as Sold
-            </button>
-            <button type="button" class="btn btn-secondary" onclick="UniMarketplace.deleteAgentItem(${item.id}, '${item.listingRef || ''}')" style="background: #fee2e2; border-color: #fca5a5; color: #dc2626; font-size: 0.85rem; padding: 0.5rem 1rem; font-weight: 600; border-radius: 9999px; cursor: pointer;">
-              🗑️ Delete Item
-            </button>
-          </div>
-        </div>
-      `).join('')}
+        `;
+      }).join('')}
     `;
   }
 
@@ -2050,6 +2408,7 @@
     scheduleInspectionVisit,
     rejectSubmission,
     updateInquiryByAgent,
+    filterInquiriesByListing,
     promptDealUpdate,
     resetFilters,
     showToast
