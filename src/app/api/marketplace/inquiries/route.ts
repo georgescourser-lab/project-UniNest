@@ -12,13 +12,15 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const refCode = searchParams.get('ref');
+    const clientEmail = searchParams.get('clientEmail')?.toLowerCase().trim();
 
     const db = await getCloudDatabase();
     const inquiries = db.inquiries || [];
 
     if (refCode) {
+      const cleanRef = refCode.trim().toUpperCase();
       const match = inquiries.find(
-        (i) => i.refCode.toUpperCase() === refCode.trim().toUpperCase()
+        (i) => (i.refCode || '').trim().toUpperCase() === cleanRef
       );
       if (match) {
         return NextResponse.json({ success: true, inquiry: match });
@@ -26,10 +28,17 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Inquiry not found' }, { status: 404 });
     }
 
+    let filtered = inquiries;
+    if (clientEmail) {
+      filtered = filtered.filter(
+        (i) => (i.clientEmail || '').toLowerCase().trim() === clientEmail
+      );
+    }
+
     return NextResponse.json({
       success: true,
-      inquiries,
-      total: inquiries.length,
+      inquiries: filtered,
+      total: filtered.length,
     });
   } catch (err: any) {
     return NextResponse.json(

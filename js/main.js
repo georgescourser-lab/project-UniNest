@@ -379,30 +379,40 @@ window.handlePropertyViewingSubmit = function(event) {
   const propTitle = document.getElementById('prop-title')?.textContent || 'Student Property Viewing';
   const refCode = `UN-PROP-${Math.floor(10000 + Math.random() * 90000)}`;
 
+  const viewingInquiry = {
+    refCode,
+    createdAt: new Date().toISOString(),
+    itemId: 0,
+    itemTitle: propTitle,
+    itemPrice: 'Property Viewing',
+    campus: 'Campus Area',
+    clientName: name,
+    clientPhone: phone,
+    clientEmail: email,
+    preferredDate: date,
+    preferredTime: time,
+    preferredHub: 'On-Site Accompanied Viewing',
+    notes,
+    status: 'Pending Agent Review',
+    agentName: 'Authorized UniNest Agent',
+    agentNotes: 'Property viewing inquiry received.',
+    dealUpdate: `Your appointment request (${refCode}) is registered with the supervising agent.`,
+  };
+
   try {
     const stored = localStorage.getItem('uninest_agent_inquiries');
     const list = stored ? JSON.parse(stored) : [];
-    list.unshift({
-      refCode,
-      createdAt: new Date().toISOString(),
-      itemId: 0,
-      itemTitle: propTitle,
-      itemPrice: 'Property Viewing',
-      campus: 'Campus Area',
-      clientName: name,
-      clientPhone: phone,
-      clientEmail: email,
-      preferredDate: date,
-      preferredTime: time,
-      preferredHub: 'On-Site Accompanied Viewing',
-      notes,
-      status: 'Pending Agent Review',
-      agentName: 'Authorized UniNest Agent',
-      agentNotes: 'Property viewing inquiry received.',
-      dealUpdate: `Your appointment request (${refCode}) is registered with the supervising agent.`,
-    });
+    list.unshift(viewingInquiry);
     localStorage.setItem('uninest_agent_inquiries', JSON.stringify(list));
   } catch (e) {}
+
+  fetch('/api/marketplace/inquiries', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(viewingInquiry),
+  }).catch(function(err) {
+    console.warn('Property viewing cloud sync notice:', err);
+  });
 
   window.closePropertyViewingModal();
   if (event.target && event.target.reset) {

@@ -362,21 +362,33 @@
 
   <!-- Status Tracker Modal -->
   <div id="status-tracker-modal" class="uni-modal-overlay">
-    <div class="uni-modal-dialog" style="max-width: 580px;">
+    <div class="uni-modal-dialog" style="max-width: 640px;">
       <div class="uni-modal-header">
         <div>
-          <h3 style="margin-bottom: 0.25rem;">Inquiry Status Tracker</h3>
-          <p style="font-size: 0.82rem; color: #64748b; margin: 0;">Track appointment confirmation & deal updates without exposing private details.</p>
+          <h3 style="margin-bottom: 0.25rem;">Live Deal & Inquiry Tracker</h3>
+          <p style="font-size: 0.82rem; color: #64748b; margin: 0;">Track appointment confirmation, accompanied viewing, and deal handovers with verified campus agents.</p>
         </div>
         <button type="button" class="uni-modal-close-btn" onclick="UniMarketplace.closeStatusTrackerModal()">&times;</button>
       </div>
       <div class="uni-modal-body">
-        <form onsubmit="UniMarketplace.checkInquiryStatus(event)" style="display: flex; gap: 0.5rem; margin-bottom: 1.25rem;">
-          <input type="text" id="tracker-ref-input" class="form-input" placeholder="Enter Inquiry Code (e.g. UN-INQ-40812)" required style="text-transform: uppercase;">
-          <button type="submit" class="btn btn-primary" style="white-space: nowrap; padding: 0.75rem 1.25rem;">Lookup</button>
-        </form>
+        <!-- Client Active Deals Stream (Loaded automatically when signed in) -->
+        <div id="client-active-deals-container"></div>
 
-        <div id="tracker-result-box" style="display: none;"></div>
+        <!-- Reference Code Search Form (Without placeholder) -->
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1.25rem; margin-top: 1rem;">
+          <label for="tracker-ref-input" style="display: block; font-size: 0.85rem; font-weight: 700; color: #1e293b; margin-bottom: 0.35rem;">
+            Look Up Deal Reference Code
+          </label>
+          <p style="font-size: 0.8rem; color: #64748b; margin: 0 0 0.75rem 0;">
+            Enter your inquiry or viewing reference code (e.g. UN-INQ-40812 or UN-PROP-20194):
+          </p>
+          <form onsubmit="UniMarketplace.checkInquiryStatus(event)" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <input type="text" id="tracker-ref-input" class="form-input" required style="flex: 1; min-width: 200px; text-transform: uppercase; font-family: monospace; font-weight: 600;">
+            <button type="submit" class="btn btn-primary" style="white-space: nowrap; padding: 0.75rem 1.25rem;">Track Deal</button>
+          </form>
+        </div>
+
+        <div id="tracker-result-box" style="display: none; margin-top: 1.25rem;"></div>
       </div>
     </div>
   </div>

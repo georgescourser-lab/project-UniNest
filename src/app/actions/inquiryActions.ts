@@ -3,6 +3,7 @@
 import { createClient } from '@/utils/supabase/server'
 import { getCurrentUser, syncUserSession } from '@/app/actions/authActions'
 import { revalidatePath } from 'next/cache'
+import { addCloudInquiry } from '@/lib/cloudStore'
 
 export type InquiryState = {
   success?: boolean
@@ -84,6 +85,30 @@ export async function submitPropertyInquiry(prevState: InquiryState | null, form
 
     if (insertError) {
       console.warn('Note: inquiries table fallback in effect:', insertError.message)
+    }
+
+    try {
+      await addCloudInquiry({
+        refCode,
+        createdAt: new Date().toISOString(),
+        itemId: propertyId,
+        itemTitle: prop?.title || 'Student House Viewing',
+        itemPrice: 'Property Viewing',
+        campus: 'Campus Area',
+        clientName,
+        clientPhone,
+        clientEmail: clientEmail || (user?.email ?? ''),
+        preferredDate,
+        preferredTime: preferredTime || 'Flexible Window',
+        preferredHub: 'On-Site Accompanied Viewing',
+        notes,
+        status: 'Pending Agent Review',
+        agentName: 'Authorized UniNest Agent',
+        agentNotes: 'Property viewing inquiry received.',
+        dealUpdate: `Your appointment request (${refCode}) is registered with the supervising agent.`,
+      })
+    } catch (cloudErr) {
+      console.warn('Could not save viewing to cloud database:', cloudErr)
     }
 
     return {

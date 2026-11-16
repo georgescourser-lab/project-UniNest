@@ -380,8 +380,17 @@
       setTimeout(openPostModal, 300);
     } else if (window.location.hash === '#agent-portal' || urlParams.get('portal') === 'agent') {
       setTimeout(openAgentPortal, 300);
-    } else if (window.location.hash === '#track' || urlParams.get('track') === 'deal') {
-      setTimeout(openStatusTrackerModal, 300);
+    } else if (
+      window.location.hash.startsWith('#track') ||
+      urlParams.get('track') === 'deal' ||
+      urlParams.get('ref')
+    ) {
+      const refParam =
+        urlParams.get('ref') ||
+        (window.location.hash.includes('ref=')
+          ? window.location.hash.split('ref=')[1]
+          : '');
+      setTimeout(() => openStatusTrackerModal(refParam), 300);
     }
   }
 
@@ -841,7 +850,7 @@
   // Status Tracker (Clients check status without exposing private contacts)
   // =========================================================================
 
-  function openStatusTrackerModal() {
+  function openStatusTrackerModal(prefillRef) {
     if (!window.UniAuth) {
       alert('Authentication initializing. Please try again.');
       return;
@@ -851,6 +860,17 @@
       if (modal) {
         modal.classList.add('open');
         document.body.style.overflow = 'hidden';
+
+        // Automatically load this client's active deals from cloud & local storage
+        renderClientActiveDeals();
+
+        if (prefillRef) {
+          const refInput = document.getElementById('tracker-ref-input');
+          if (refInput) {
+            refInput.value = prefillRef.trim().toUpperCase();
+            checkInquiryStatus(null, prefillRef);
+          }
+        }
       }
     }, { reason: 'Sign in to track your inquiry and deal status.' });
   }
@@ -863,110 +883,341 @@
     }
   }
 
-  function checkInquiryStatus(event) {
+  // Renders the signed-in client's active deals stream
+  function renderClientActiveDeals() {
+    const container = document.getElementById('client-active-deals-container');
+    if (!container) return;
+
+    const user = window.UniAuth ? window.UniAuth.getUser() : null;
+    const clientEmail = (user && user.email) ? user.email.trim().toLowerCase() : '';
+
+    container.innerHTML = `
+      <div style="text-align: center; padding: 1.25rem; color: #64748b; font-size: 0.85rem; background: #f8fafc; border-radius: 10px; border: 1px dashed #cbd5e1;">
+        <span>🔄 Loading your live deals and inquiries...</span>
+      </div>
+    `;
+
+    // Fetch from central cloud database and merge with local storage
+    const fetchCloud = clientEmail 
+      ? fetch('/api/marketplace/inquiries?clientEmail=' + encodeURIComponent(clientEmail)).then(r => r.ok ? r.json() : null).catch(() => null)
+      : Promise.resolve(null);
+
+    fetchCloud.then(data => {
+      let cloudInquiries = (data && Array.isArray(data.inquiries)) ? data.inquiries : [];
+
+      let localInquiries = [];
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY_INQUIRIES);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) localInquiries = parsed;
+        }
+      } catch (e) {}
+
+      // Combine by refCode (cloud takes precedence or updates local)
+      const seen = new Set();
+      const combined = [];
+
+      for (const inq of cloudInquiries) {
+        const ref = (inq.refCode || '').trim().toUpperCase();
+        if (!ref || seen.has(ref)) continue;
+        seen.add(ref);
+        combined.push(inq);
+      }
+
+      for (const inq of localInquiries) {
+        const ref = (inq.refCode || '').trim().toUpperCase();
+        if (!ref || seen.has(ref)) continue;
+        if (!clientEmail || (inq.clientEmail && inq.clientEmail.toLowerCase() === clientEmail) || inq.clientName) {
+          seen.add(ref);
+          combined.push(inq);
+        }
+      }
+
+      if (!combined.length) {
+        container.innerHTML = `
+          <div style="background: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 12px; padding: 1.5rem; text-align: center; margin-bottom: 1rem;">
+            <div style="font-size: 1.75rem; margin-bottom: 0.35rem;">🤝</div>
+            <h4 style="color: #1e293b; margin: 0 0 0.25rem 0; font-size: 1rem;">No Active Deals Yet</h4>
+            <p style="color: #64748b; font-size: 0.85rem; margin: 0 0 1rem 0;">
+              When you request an item handover or book a house viewing, your supervised deal will appear here automatically with live progress updates.
+            </p>
+            <div style="display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap;">
+              <a href="/marketplace.html" class="btn btn-secondary" style="font-size: 0.82rem; padding: 0.4rem 0.85rem;">Browse Marketplace</a>
+              <a href="/search" class="btn btn-primary" style="font-size: 0.82rem; padding: 0.4rem 0.85rem;">Browse Houses</a>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = `
+        <div style="margin-bottom: 1rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+            <h4 style="margin: 0; font-size: 1rem; color: #0f172a; font-weight: 700;">
+              Your Active Deals (${combined.length})
+            </h4>
+            <span style="font-size: 0.78rem; color: #16a34a; font-weight: 600;">✓ Live Agent Sync</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 0.75rem; max-height: 260px; overflow-y: auto; padding-right: 4px;">
+            ${combined.map(inq => {
+              const isDone = (inq.status || '').toLowerCase() === 'completed';
+              const isConfirmed = isDone || (inq.status || '').toLowerCase().includes('confirmed');
+              const badgeStyle = isDone 
+                ? 'background: #dcfce7; color: #15803d; border: 1px solid #86efac;'
+                : isConfirmed
+                ? 'background: #dbeafe; color: #1d4ed8; border: 1px solid #93c5fd;'
+                : 'background: #fef3c7; color: #b45309; border: 1px solid #fde68a;';
+
+              return `
+                <div style="background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 0.85rem 1rem; box-shadow: 0 1px 4px rgba(0,0,0,0.03);">
+                  <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.4rem; gap: 0.5rem; flex-wrap: wrap;">
+                    <div>
+                      <span style="font-family: monospace; font-size: 0.78rem; font-weight: 700; color: #2563eb; background: #eff6ff; padding: 0.15rem 0.45rem; border-radius: 4px;">
+                        ${inq.refCode}
+                      </span>
+                      <strong style="font-size: 0.95rem; color: #0f172a; margin-left: 0.4rem;">${inq.itemTitle}</strong>
+                    </div>
+                    <span style="font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.6rem; border-radius: 9999px; ${badgeStyle}">
+                      ${inq.status || 'Pending Review'}
+                    </span>
+                  </div>
+                  <div style="font-size: 0.8rem; color: #64748b; margin-bottom: 0.35rem;">
+                    <strong>Supervising Agent:</strong> ${inq.agentName || 'Verified UniNest Agent'} • <strong>Slot:</strong> ${inq.preferredDate || 'Flexible'} (${inq.preferredTime || 'Daytime'})
+                  </div>
+                  <div style="background: #f8fafc; border-left: 3px solid #2563eb; padding: 0.45rem 0.7rem; border-radius: 0 6px 6px 0; font-size: 0.8rem; color: #1e293b; margin-bottom: 0.45rem;">
+                    ${inq.dealUpdate || 'Request logged. Waiting for agent confirmation.'}
+                  </div>
+                  <button type="button" class="btn btn-secondary" onclick="UniMarketplace.checkInquiryStatus(null, '${inq.refCode}')" style="font-size: 0.78rem; padding: 0.35rem 0.75rem; width: 100%; justify-content: center;">
+                    View Detailed Progress Timeline &rarr;
+                  </button>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `;
+    });
+  }
+
+  function renderDealTimelineCard(item) {
+    const status = item.status || 'Pending Agent Review';
+    const isDone = status.toLowerCase() === 'completed';
+    const isConfirmed = isDone || status.toLowerCase().includes('confirmed') || status.toLowerCase().includes('visit');
+
+    const badgeBg = isDone ? '#dcfce7' : isConfirmed ? '#dbeafe' : '#fef3c7';
+    const badgeColor = isDone ? '#15803d' : isConfirmed ? '#1d4ed8' : '#b45309';
+    const badgeBorder = isDone ? '#86efac' : isConfirmed ? '#93c5fd' : '#fde68a';
+
+    const step1Done = true;
+    const step2Done = isConfirmed;
+    const step3Done = isDone;
+
+    return `
+      <div style="background: #ffffff; border: 1.5px solid #cbd5e1; border-radius: 14px; padding: 1.5rem; box-shadow: 0 4px 14px rgba(0,0,0,0.05);">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 0.5rem;">
+          <div>
+            <div style="font-size: 0.72rem; text-transform: uppercase; color: #64748b; font-weight: 700; letter-spacing: 0.5px;">Deal Reference Code</div>
+            <strong style="font-size: 1.25rem; color: #0f172a; font-family: monospace;">${item.refCode || item.listingRef}</strong>
+          </div>
+          <span style="background: ${badgeBg}; color: ${badgeColor}; font-size: 0.82rem; font-weight: 700; padding: 0.35rem 0.85rem; border-radius: 9999px; border: 1px solid ${badgeBorder};">
+            ${status}
+          </span>
+        </div>
+
+        <!-- Visual Progress Stepper -->
+        <div style="display: flex; align-items: center; justify-content: space-between; margin: 1.25rem 0; position: relative; padding: 0 0.5rem;">
+          <div style="display: flex; flex-direction: column; align-items: center; text-align: center; flex: 1; z-index: 1;">
+            <div style="width: 28px; height: 28px; border-radius: 50%; background: #16a34a; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700;">✓</div>
+            <span style="font-size: 0.72rem; font-weight: 600; color: #16a34a; margin-top: 0.35rem;">Request Registered</span>
+          </div>
+          <div style="flex: 1; height: 3px; background: ${step2Done ? '#16a34a' : '#e2e8f0'}; margin-top: -16px;"></div>
+          <div style="display: flex; flex-direction: column; align-items: center; text-align: center; flex: 1; z-index: 1;">
+            <div style="width: 28px; height: 28px; border-radius: 50%; background: ${step2Done ? '#16a34a' : '#e2e8f0'}; color: ${step2Done ? '#fff' : '#64748b'}; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700;">
+              ${step2Done ? '✓' : '2'}
+            </div>
+            <span style="font-size: 0.72rem; font-weight: 600; color: ${step2Done ? '#16a34a' : '#64748b'}; margin-top: 0.35rem;">Agent Coordinated</span>
+          </div>
+          <div style="flex: 1; height: 3px; background: ${step3Done ? '#16a34a' : '#e2e8f0'}; margin-top: -16px;"></div>
+          <div style="display: flex; flex-direction: column; align-items: center; text-align: center; flex: 1; z-index: 1;">
+            <div style="width: 28px; height: 28px; border-radius: 50%; background: ${step3Done ? '#16a34a' : '#e2e8f0'}; color: ${step3Done ? '#fff' : '#64748b'}; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700;">
+              ${step3Done ? '✓' : '3'}
+            </div>
+            <span style="font-size: 0.72rem; font-weight: 600; color: ${step3Done ? '#16a34a' : '#64748b'}; margin-top: 0.35rem;">Handover Done</span>
+          </div>
+        </div>
+
+        <!-- Deal Attributes -->
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 1rem; margin-bottom: 1rem; font-size: 0.88rem;">
+          <div style="margin-bottom: 0.45rem;">
+            <strong>Deal Target:</strong> ${item.itemTitle || item.title || 'Marketplace Item'} ${item.itemPrice || item.price ? `(${item.itemPrice || item.price})` : ''}
+          </div>
+          <div style="margin-bottom: 0.45rem;">
+            <strong>Supervising Agent:</strong> <span style="color: #2563eb; font-weight: 600;">${item.agentName || item.assignedAgentName || 'Authorized UniNest Campus Agent'}</span>
+          </div>
+          <div style="margin-bottom: 0.45rem;">
+            <strong>Scheduled Slot:</strong> ${item.preferredDate || 'Flexible Window'} • ${item.preferredTime || 'Daytime'}
+          </div>
+          <div>
+            <strong>Handover Point:</strong> ${item.preferredHub || item.location || 'Accompanied Campus Hub'}
+          </div>
+        </div>
+
+        <!-- Agent Deal Update -->
+        <div style="background: #eff6ff; border-left: 4px solid #2563eb; padding: 0.85rem 1rem; border-radius: 0 8px 8px 0; font-size: 0.88rem; color: #1e3a8a;">
+          <div style="font-weight: 700; margin-bottom: 0.25rem;">📢 Live Agent Deal Update:</div>
+          <div>${item.dealUpdate || 'Your inquiry is logged in the system. The supervising agent will accompany your inspection and verify all items before handover.'}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  function checkInquiryStatus(event, queryOverride) {
     if (event) event.preventDefault();
     if (!window.UniAuth || !window.UniAuth.isAuthenticated()) {
       if (window.UniAuth) {
         window.UniAuth.requireAuth(() => {
-          checkInquiryStatus();
-        }, { reason: 'Please sign in to look up your inquiry or verification ticket status.' });
+          checkInquiryStatus(null, queryOverride);
+        }, { reason: 'Please sign in to track your inquiry or verification ticket status.' });
       }
       return;
     }
     const refInput = document.getElementById('tracker-ref-input');
     const resultBox = document.getElementById('tracker-result-box');
-    if (!refInput || !resultBox) return;
+    if (!resultBox) return;
 
-    const query = refInput.value.trim().toUpperCase();
+    const query = (queryOverride || (refInput ? refInput.value : '')).trim().toUpperCase();
     if (!query) return;
 
-    // Check inquiries
-    let inquiries = [];
+    if (refInput && !refInput.value) {
+      refInput.value = query;
+    }
+
+    resultBox.style.display = 'block';
+    resultBox.innerHTML = `
+      <div style="background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 12px; padding: 1.5rem; text-align: center; color: #2563eb;">
+        <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">🔍</div>
+        <div style="font-weight: 600; font-size: 0.95rem; color: #0f172a;">Connecting to Agent Network...</div>
+        <div style="font-size: 0.82rem; color: #64748b; margin-top: 0.25rem;">Looking up real-time deal status for <code>${query}</code></div>
+      </div>
+    `;
+
+    // 1. Check local storage first for instant display
+    let localInq = null;
     try {
       const stored = localStorage.getItem(STORAGE_KEY_INQUIRIES);
-      if (stored) inquiries = JSON.parse(stored);
-    } catch (e) {
-      console.error(e);
-    }
+      if (stored) {
+        const list = JSON.parse(stored);
+        if (Array.isArray(list)) {
+          localInq = list.find(i => (i.refCode || '').trim().toUpperCase() === query);
+        }
+      }
+    } catch (e) {}
 
-    // Check pending seller submissions
-    let pendingSubmissions = [];
+    // Check pending seller submissions in local storage
+    let localSub = null;
     try {
       const storedSub = localStorage.getItem(STORAGE_KEY_PENDING_SUBMISSIONS);
-      if (storedSub) pendingSubmissions = JSON.parse(storedSub);
-    } catch (e) {
-      console.error(e);
-    }
+      if (storedSub) {
+        const list = JSON.parse(storedSub);
+        if (Array.isArray(list)) {
+          localSub = list.find(s => (s.listingRef || '').trim().toUpperCase() === query);
+        }
+      }
+    } catch (e) {}
 
-    const matchInq = inquiries.find(inq => inq.refCode.toUpperCase() === query);
-    const matchSub = pendingSubmissions.find(sub => sub.listingRef.toUpperCase() === query);
-
-    if (matchSub) {
+    if (localInq) {
+      resultBox.innerHTML = renderDealTimelineCard(localInq);
+    } else if (localSub) {
       resultBox.innerHTML = `
         <div style="background: #ffffff; border: 1.5px solid #cbd5e1; border-radius: 12px; padding: 1.5rem; box-shadow: var(--shadow-sm);">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
             <div>
               <div style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; font-weight: 600;">Verification Ticket</div>
-              <strong style="font-size: 1.15rem; color: #0f172a;">${matchSub.listingRef}</strong>
+              <strong style="font-size: 1.15rem; color: #0f172a;">${localSub.listingRef}</strong>
             </div>
             <span style="background: #fef3c7; color: #b45309; font-size: 0.82rem; font-weight: 700; padding: 0.35rem 0.85rem; border-radius: 9999px;">
-              ${matchSub.status}
+              ${localSub.status}
             </span>
           </div>
           <div style="font-size: 0.92rem; color: #334155; margin-bottom: 0.5rem;">
-            <strong>Item:</strong> ${matchSub.title} (${matchSub.price})
+            <strong>Item:</strong> ${localSub.title} (${localSub.price})
           </div>
           <div style="font-size: 0.88rem; color: #64748b; margin-bottom: 0.5rem;">
-            <strong>Assigned Agent:</strong> ${matchSub.assignedAgentName}
+            <strong>Assigned Agent:</strong> ${localSub.assignedAgentName || 'Verified UniNest Agent'}
           </div>
           <div style="font-size: 0.88rem; color: #64748b; margin-bottom: 1rem;">
-            <strong>Verification Protocol:</strong> ${matchSub.verificationMethod}
+            <strong>Verification Protocol:</strong> ${localSub.verificationMethod || 'Hostel Physical Verification'}
           </div>
           <div style="background: #eff6ff; border-left: 4px solid #2563eb; padding: 0.85rem 1rem; border-radius: 0 8px 8px 0; font-size: 0.88rem; color: #1e3a8a;">
-            💡 <strong>Next Step:</strong> Your agent is preparing the inspection. Once verified, this item will go live with the "Agent Verified ✓" badge.
+            💡 <strong>Next Step:</strong> Your agent is preparing physical inspection. Once verified, this item goes live with the "Agent Verified ✓" badge.
           </div>
         </div>
       `;
-      resultBox.style.display = 'block';
-      return;
     }
 
-    if (matchInq) {
-      resultBox.innerHTML = `
-        <div style="background: #ffffff; border: 1.5px solid #cbd5e1; border-radius: 12px; padding: 1.5rem; box-shadow: var(--shadow-sm);">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-            <div>
-              <div style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; font-weight: 600;">Buyer Inquiry Reference</div>
-              <strong style="font-size: 1.15rem; color: #0f172a;">${matchInq.refCode}</strong>
-            </div>
-            <span style="background: #dcfce7; color: #15803d; font-size: 0.82rem; font-weight: 700; padding: 0.35rem 0.85rem; border-radius: 9999px;">
-              ${matchInq.status}
-            </span>
-          </div>
-          <div style="font-size: 0.92rem; color: #334155; margin-bottom: 0.5rem;">
-            <strong>Item:</strong> ${matchInq.itemTitle} (${matchInq.itemPrice})
-          </div>
-          <div style="font-size: 0.88rem; color: #64748b; margin-bottom: 0.5rem;">
-            <strong>Supervising Agent:</strong> ${matchInq.agentName}
-          </div>
-          <div style="font-size: 0.88rem; color: #64748b; margin-bottom: 1rem;">
-            <strong>Scheduled Slot:</strong> ${matchInq.preferredDate} • ${matchInq.preferredTime}
-          </div>
-          <div style="background: #f8fafc; border-left: 4px solid #2563eb; padding: 0.85rem 1rem; border-radius: 0 8px 8px 0; font-size: 0.88rem; color: #1e293b;">
-            <strong>Agent Update:</strong><br>${matchInq.dealUpdate}
-          </div>
-        </div>
-      `;
-      resultBox.style.display = 'block';
-      return;
-    }
+    // 2. Query central cloud store API for live cloud-synced status across all devices
+    fetch('/api/marketplace/inquiries?ref=' + encodeURIComponent(query))
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data && data.inquiry) {
+          resultBox.innerHTML = renderDealTimelineCard(data.inquiry);
+          resultBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        } else if (!localInq && !localSub) {
+          // Check marketplace items API in case it's a seller ticket code
+          fetch('/api/marketplace?scope=agent')
+            .then(mr => mr.ok ? mr.json() : null)
+            .then(mData => {
+              const matchedItem = (mData && Array.isArray(mData.items)) 
+                ? mData.items.find(i => (i.listingRef || '').trim().toUpperCase() === query)
+                : null;
 
-    resultBox.innerHTML = `
-      <div style="background: #fef2f2; border: 1px solid #fecaca; padding: 1.25rem; border-radius: 8px; color: #991b1b; font-size: 0.9rem;">
-        No record found matching <code>${query}</code>. Please check your reference code.
-      </div>
-    `;
-    resultBox.style.display = 'block';
+              if (matchedItem) {
+                resultBox.innerHTML = `
+                  <div style="background: #ffffff; border: 1.5px solid #cbd5e1; border-radius: 12px; padding: 1.5rem; box-shadow: var(--shadow-sm);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                      <div>
+                        <div style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; font-weight: 600;">Marketplace Listing Ticket</div>
+                        <strong style="font-size: 1.15rem; color: #0f172a;">${matchedItem.listingRef}</strong>
+                      </div>
+                      <span style="background: ${matchedItem.status === 'Sold' ? '#fee2e2' : '#dcfce7'}; color: ${matchedItem.status === 'Sold' ? '#991b1b' : '#15803d'}; font-size: 0.82rem; font-weight: 700; padding: 0.35rem 0.85rem; border-radius: 9999px;">
+                        ${matchedItem.status || 'Live'}
+                      </span>
+                    </div>
+                    <div style="font-size: 0.92rem; color: #334155; margin-bottom: 0.5rem;">
+                      <strong>Item:</strong> ${matchedItem.title} (${matchedItem.price})
+                    </div>
+                    <div style="font-size: 0.88rem; color: #64748b; margin-bottom: 0.5rem;">
+                      <strong>Supervising Agent:</strong> ${matchedItem.assignedAgentName || 'Verified UniNest Agent'}
+                    </div>
+                    <div style="background: #eff6ff; border-left: 4px solid #2563eb; padding: 0.85rem 1rem; border-radius: 0 8px 8px 0; font-size: 0.88rem; color: #1e3a8a;">
+                      ${matchedItem.status === 'Sold' ? 'This item has been successfully sold under agent supervision and archived.' : 'This listing is active and verified by an authorized UniNest agent.'}
+                    </div>
+                  </div>
+                `;
+              } else {
+                resultBox.innerHTML = `
+                  <div style="background: #fef2f2; border: 1px solid #fecaca; padding: 1.25rem; border-radius: 10px; color: #991b1b; font-size: 0.88rem;">
+                    <strong>No record found matching <code>${query}</code></strong>
+                    <p style="margin: 0.35rem 0 0 0; color: #7f1d1d; font-size: 0.82rem;">
+                      Please check that your reference code was typed correctly (e.g. UN-INQ-40812 or UN-PROP-20194). If you recently submitted your inquiry while signed in, check your Active Deals list above.
+                    </p>
+                  </div>
+                `;
+              }
+            })
+            .catch(() => {
+              resultBox.innerHTML = `
+                <div style="background: #fef2f2; border: 1px solid #fecaca; padding: 1.25rem; border-radius: 10px; color: #991b1b; font-size: 0.88rem;">
+                  No record found matching <code>${query}</code>. Please check your reference code.
+                </div>
+              `;
+            });
+        }
+      })
+      .catch(err => {
+        console.warn('Live track error:', err);
+      });
   }
 
   // =========================================================================
