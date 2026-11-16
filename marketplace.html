@@ -33,14 +33,14 @@
         <img src="images/logo.jpg" alt="UniNest Logo" style="height: 2rem; width: auto;" />
         UniNest
       </a>
-      <button class="mobile-menu-btn" aria-label="Toggle menu" onclick="this.parentElement.classList.toggle('mobile-menu-open')">
+      <button class="mobile-menu-btn" type="button" aria-label="Toggle menu" aria-controls="marketplace-navigation" aria-expanded="false" onclick="var open = this.parentElement.classList.toggle('mobile-menu-open'); this.setAttribute('aria-expanded', open ? 'true' : 'false');">
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="3" y1="12" x2="21" y2="12"></line>
           <line x1="3" y1="6" x2="21" y2="6"></line>
           <line x1="3" y1="18" x2="21" y2="18"></line>
         </svg>
       </button>
-      <div class="nav-links">
+      <div id="marketplace-navigation" class="nav-links">
         <a href="/">Home</a>
         <a href="/search">Properties</a>
         <a href="/agents">Agents</a>
@@ -604,6 +604,7 @@
             </div>
           </div>
 
+          <p id="post-item-status" role="status" aria-live="polite" style="display: none; margin: 0 0 1rem; color: #b45309; font-size: 0.85rem;"></p>
           <div class="post-item-actions" style="display: flex; gap: 0.75rem; justify-content: flex-end;">
             <button type="button" class="btn btn-secondary" onclick="UniMarketplace.closePostModal()">Cancel</button>
             <button type="submit" class="btn btn-primary" style="padding: 0.75rem 1.5rem;">Submit Listing to Agent</button>

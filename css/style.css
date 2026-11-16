@@ -1379,7 +1379,7 @@ input:focus, select:focus, textarea:focus {
 .uni-modal-overlay.open {
   display: flex;
   opacity: 1;
-  overflow-y: auto;
+  overflow: hidden;
   overscroll-behavior: contain;
 }
 
@@ -1389,7 +1389,9 @@ input:focus, select:focus, textarea:focus {
   max-width: 600px;
   width: 100%;
   max-height: 90vh;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   box-shadow: var(--shadow-hover);
   position: relative;
   transform: scale(0.98);
@@ -1438,6 +1440,9 @@ input:focus, select:focus, textarea:focus {
 
 .uni-modal-body {
   padding: 1.75rem;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 @supports not (backdrop-filter: blur(1px)) {
@@ -1566,6 +1571,10 @@ input:focus, select:focus, textarea:focus {
   .uni-modal-header,
   .uni-modal-body {
     padding: 1rem;
+  }
+
+  .uni-modal-body {
+    flex: 1 1 auto;
   }
 
   #post-item-modal .item-image-input-grid {

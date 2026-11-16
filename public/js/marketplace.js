@@ -724,6 +724,11 @@
       uploadedItemImageDataUrl = '';
       const box = document.getElementById('item-preview-box');
       if (box) box.style.display = 'none';
+      const status = document.getElementById('post-item-status');
+      if (status) {
+        status.textContent = '';
+        status.style.display = 'none';
+      }
     }
   }
 
@@ -741,6 +746,20 @@
       return;
     }
     const form = event.target;
+    const submitButton = form.querySelector('button[type="submit"]');
+    const status = document.getElementById('post-item-status');
+    const setSubmissionStatus = function(message, isError) {
+      if (status) {
+        status.textContent = message;
+        status.style.color = isError ? '#b91c1c' : '#b45309';
+        status.style.display = 'block';
+      }
+    };
+
+    if (submitButton) {
+      submitButton.disabled = true;
+      submitButton.textContent = 'Submitting...';
+    }
 
     const title = form['item-title'].value.trim();
     const category = form['item-category'].value;
@@ -811,41 +830,48 @@
       status: 'Pending Agent Verification'
     };
 
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY_PENDING_SUBMISSIONS);
-      const list = stored ? JSON.parse(stored) : [];
-      list.unshift(pendingSubmission);
-      localStorage.setItem(STORAGE_KEY_PENDING_SUBMISSIONS, JSON.stringify(list));
-    } catch (e) {
-      console.error('Error saving pending submission:', e);
-    }
-
     // Persist to central cloud database across all devices
     fetch('/api/marketplace', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(pendingSubmission),
     })
-      .then(function(res) { return res.json(); })
+      .then(function(res) {
+        return res.json().then(function(data) {
+          if (!res.ok || !data || !data.success || !data.item) {
+            throw new Error((data && data.error) || 'The listing could not be submitted.');
+          }
+          return data;
+        });
+      })
       .then(function(cloudRes) {
-        if (cloudRes?.item) {
-          syncMarketplaceFromServer();
+        try {
+          const stored = localStorage.getItem(STORAGE_KEY_PENDING_SUBMISSIONS);
+          const list = stored ? JSON.parse(stored) : [];
+          list.unshift(cloudRes.item);
+          localStorage.setItem(STORAGE_KEY_PENDING_SUBMISSIONS, JSON.stringify(list));
+        } catch (storageError) {
+          console.error('Error saving pending submission locally:', storageError);
         }
+        syncMarketplaceFromServer();
+        form.reset();
+        closePostModal();
+        alert(
+          `✓ Item Submitted to Agent Verification Queue!\n\n` +
+          `Verification Ticket: ${cloudRes.listingRef || listingRef}\n` +
+          `Assigned Agent: ${assignedAgent.name}\n` +
+          `Verification Method: ${verificationMethod}\n\n` +
+          `Your item is currently pending verification. Your assigned agent will contact you to conduct the physical inspection before publishing it live on the marketplace. Your contact details remain confidential.`
+        );
       })
       .catch(function(err) {
-        console.warn('Marketplace cloud persistence notice:', err);
+        console.error('Marketplace submission failed:', err);
+        setSubmissionStatus(err.message || 'The listing could not be submitted. Please try again.', true);
+        if (submitButton) {
+          submitButton.disabled = false;
+          submitButton.textContent = 'Submit Listing to Agent';
+        }
       });
-
-    form.reset();
-    closePostModal();
-
-    alert(
-      `✓ Item Submitted to Agent Verification Queue!\n\n` +
-      `Verification Ticket: ${listingRef}\n` +
-      `Assigned Agent: ${assignedAgent.name}\n` +
-      `Verification Method: ${verificationMethod}\n\n` +
-      `Your item is currently pending verification. Your assigned agent will contact you to conduct the physical inspection before publishing it live on the marketplace. Your contact details remain confidential.`
-    );
   }
 
   // =========================================================================
