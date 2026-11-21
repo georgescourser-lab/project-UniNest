@@ -1,7 +1,6 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { Pool } from 'pg';
 
 export interface CloudProperty {
   id: number;
@@ -123,164 +122,6 @@ declare global {
   var __uninestLiveCloudDbTimestamp: number | undefined;
   // eslint-disable-next-line no-var
   var __uninestStoreBroadcastId: string | undefined;
-  var __uninestMarketplacePool: Pool | undefined;
-  var __uninestMarketplaceDatabaseUnavailable: boolean | undefined;
-}
-
-function getMarketplacePool(): Pool | null {
-  if (!process.env.DATABASE_URL || globalThis.__uninestMarketplaceDatabaseUnavailable) return null;
-  if (!globalThis.__uninestMarketplacePool) {
-    globalThis.__uninestMarketplacePool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      max: 5,
-      idleTimeoutMillis: 30000,
-    });
-  }
-  return globalThis.__uninestMarketplacePool;
-}
-
-function splitMarketplaceItem(item: CloudMarketplaceItem) {
-  const {
-    ownerLegalName,
-    ownerPhone,
-    ownerEmail,
-    ownerPrivateAddress,
-    ...publicData
-  } = item;
-
-  return {
-    publicData,
-    privateData: {
-      ownerLegalName: ownerLegalName || '',
-      ownerPhone: ownerPhone || '',
-      ownerEmail: ownerEmail || '',
-      ownerPrivateAddress: ownerPrivateAddress || '',
-    },
-  };
-}
-
-async function readMarketplaceItemsFromDatabase(): Promise<CloudMarketplaceItem[] | null> {
-  const pool = getMarketplacePool();
-  if (!pool) return null;
-
-  try {
-    const result = await pool.query(
-      `select id, listing_ref, status, data, private_data
-         from public.marketplace_items
-        order by updated_at desc, created_at desc`
-    );
-
-    return result.rows.map((row) => ({
-      ...row.data,
-      ...row.private_data,
-      id: Number(row.id),
-      listingRef: row.listing_ref,
-      status: row.status,
-    }));
-  } catch (error) {
-    globalThis.__uninestMarketplaceDatabaseUnavailable = true;
-    console.error('Marketplace database read failed; using cloud-store fallback:', error);
-    return null;
-  }
-}
-
-async function writeMarketplaceItemToDatabase(item: CloudMarketplaceItem): Promise<void> {
-  const pool = getMarketplacePool();
-  if (!pool) return;
-
-  const { publicData, privateData } = splitMarketplaceItem(item);
-  await pool.query(
-    `insert into public.marketplace_items
-      (id, listing_ref, status, data, private_data, updated_at)
-     values ($1, $2, $3, $4::jsonb, $5::jsonb, now())
-     on conflict (listing_ref) do update set
-       id = excluded.id,
-       status = excluded.status,
-       data = excluded.data,
-       private_data = excluded.private_data,
-       updated_at = now()`,
-    [
-      item.id,
-      item.listingRef,
-      item.status,
-      JSON.stringify(publicData),
-      JSON.stringify(privateData),
-    ]
-  );
-}
-
-async function updateMarketplaceItemInDatabase(
-  listingRefOrId: string | number,
-  patch: Partial<CloudMarketplaceItem>
-): Promise<CloudMarketplaceItem | null> {
-  const pool = getMarketplacePool();
-  if (!pool) return null;
-
-  const client = await pool.connect();
-  try {
-    await client.query('begin');
-    const result = await client.query(
-      `select id, listing_ref, status, data, private_data
-         from public.marketplace_items
-        where id::text = $1 or listing_ref = $1
-        for update`,
-      [String(listingRefOrId)]
-    );
-    if (!result.rows[0]) {
-      await client.query('rollback');
-      return null;
-    }
-
-    const row = result.rows[0];
-    const current = {
-      ...row.data,
-      ...row.private_data,
-      id: Number(row.id),
-      listingRef: row.listing_ref,
-      status: row.status,
-    } as CloudMarketplaceItem;
-    const updated = { ...current, ...patch };
-    const { publicData, privateData } = splitMarketplaceItem(updated);
-
-    await client.query(
-      `update public.marketplace_items
-          set id = $1,
-              listing_ref = $2,
-              status = $3,
-              data = $4::jsonb,
-              private_data = $5::jsonb,
-              updated_at = now()
-        where id = $6`,
-      [
-        updated.id,
-        updated.listingRef,
-        updated.status,
-        JSON.stringify(publicData),
-        JSON.stringify(privateData),
-        row.id,
-      ]
-    );
-    await client.query('commit');
-    return updated;
-  } catch (error) {
-    await client.query('rollback');
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-
-async function removeMarketplaceItemFromDatabase(
-  listingRefOrId: string | number
-): Promise<boolean> {
-  const pool = getMarketplacePool();
-  if (!pool) return false;
-  const result = await pool.query(
-    `delete from public.marketplace_items
-      where id::text = $1 or listing_ref = $1`,
-    [String(listingRefOrId)]
-  );
-  return (result.rowCount || 0) > 0;
 }
 
 function getLocalBackupPath(): string {
@@ -451,21 +292,7 @@ export async function getCloudDatabase(forceRefresh = false): Promise<CloudDatab
 
   const cloudDb = await fetchFromCloud();
   if (cloudDb) {
-    let marketplaceItems = await readMarketplaceItemsFromDatabase();
-    if (marketplaceItems) {
-      const knownRefs = new Set(marketplaceItems.map((item) => item.listingRef));
-      const legacyItems = cloudDb.marketplace.filter(
-        (item) => item.listingRef && !knownRefs.has(item.listingRef)
-      );
-      for (const item of legacyItems) {
-        await writeMarketplaceItemToDatabase(item);
-      }
-      if (legacyItems.length > 0) {
-        marketplaceItems = await readMarketplaceItemsFromDatabase();
-      }
-    }
     globalThis.__uninestLiveCloudDb = cloudDb;
-    if (marketplaceItems) cloudDb.marketplace = marketplaceItems;
     globalThis.__uninestLiveCloudDbTimestamp = now;
     writeLocalBackup(cloudDb);
     return cloudDb;
@@ -473,21 +300,7 @@ export async function getCloudDatabase(forceRefresh = false): Promise<CloudDatab
 
   const localDb = readLocalBackup();
   if (localDb) {
-    let marketplaceItems = await readMarketplaceItemsFromDatabase();
-    if (marketplaceItems) {
-      const knownRefs = new Set(marketplaceItems.map((item) => item.listingRef));
-      const legacyItems = localDb.marketplace.filter(
-        (item) => item.listingRef && !knownRefs.has(item.listingRef)
-      );
-      for (const item of legacyItems) {
-        await writeMarketplaceItemToDatabase(item);
-      }
-      if (legacyItems.length > 0) {
-        marketplaceItems = await readMarketplaceItemsFromDatabase();
-      }
-    }
     globalThis.__uninestLiveCloudDb = localDb;
-    if (marketplaceItems) localDb.marketplace = marketplaceItems;
     globalThis.__uninestLiveCloudDbTimestamp = now;
     return localDb;
   }
@@ -561,18 +374,6 @@ export async function markCloudPropertySold(id: number): Promise<boolean> {
 // ============================================================================
 
 export async function addCloudMarketplaceItem(item: CloudMarketplaceItem): Promise<CloudMarketplaceItem> {
-  if (getMarketplacePool()) {
-    try {
-      await writeMarketplaceItemToDatabase(item);
-      const db = await getCloudDatabase(true);
-      db.marketplace = (await readMarketplaceItemsFromDatabase()) || [item];
-      return item;
-    } catch (error) {
-      globalThis.__uninestMarketplaceDatabaseUnavailable = true;
-      console.error('Marketplace database write failed; using cloud-store fallback:', error);
-    }
-  }
-
   const db = await getCloudDatabase(true);
   const existingIdx = db.marketplace.findIndex(
     (m) => m.id === item.id || (m.listingRef && m.listingRef === item.listingRef)
@@ -590,20 +391,6 @@ export async function updateCloudMarketplaceItem(
   listingRefOrId: string | number,
   patch: Partial<CloudMarketplaceItem>
 ): Promise<CloudMarketplaceItem | null> {
-  if (getMarketplacePool()) {
-    try {
-      const updated = await updateMarketplaceItemInDatabase(listingRefOrId, patch);
-      if (updated) {
-        const db = await getCloudDatabase(true);
-        db.marketplace = (await readMarketplaceItemsFromDatabase()) || db.marketplace;
-      }
-      return updated;
-    } catch (error) {
-      globalThis.__uninestMarketplaceDatabaseUnavailable = true;
-      console.error('Marketplace database update failed; using cloud-store fallback:', error);
-    }
-  }
-
   const db = await getCloudDatabase(true);
   const item = db.marketplace.find(
     (m) => String(m.id) === String(listingRefOrId) || m.listingRef === String(listingRefOrId)
@@ -616,20 +403,6 @@ export async function updateCloudMarketplaceItem(
 }
 
 export async function removeCloudMarketplaceItem(listingRefOrId: string | number): Promise<boolean> {
-  if (getMarketplacePool()) {
-    try {
-      const removed = await removeMarketplaceItemFromDatabase(listingRefOrId);
-      if (removed) {
-        const db = await getCloudDatabase(true);
-        db.marketplace = (await readMarketplaceItemsFromDatabase()) || db.marketplace;
-      }
-      return removed;
-    } catch (error) {
-      globalThis.__uninestMarketplaceDatabaseUnavailable = true;
-      console.error('Marketplace database delete failed; using cloud-store fallback:', error);
-    }
-  }
-
   const db = await getCloudDatabase(true);
   const initialLen = db.marketplace.length;
   db.marketplace = db.marketplace.filter(

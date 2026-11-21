@@ -129,8 +129,16 @@ export default function PropertyInquiryForm({
         <div style={{ background: '#dcfce7', border: '1px solid #bbf7d0', padding: '1.25rem', borderRadius: '8px', color: '#166534', marginBottom: '1rem' }}>
           <div style={{ fontWeight: 700, fontSize: '1.05rem', marginBottom: '0.35rem' }}>✓ Viewing Request Registered</div>
           <p style={{ fontSize: '0.88rem', margin: '0 0 0.75rem 0' }}>{state.message}</p>
-          <div style={{ fontSize: '0.82rem', background: '#ffffff', padding: '0.5rem 0.75rem', borderRadius: '6px', border: '1px dashed #86efac', display: 'inline-block' }}>
-            Inquiry Ref: <strong>{state.refCode}</strong>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <div style={{ fontSize: '0.82rem', background: '#ffffff', padding: '0.5rem 0.75rem', borderRadius: '6px', border: '1px dashed #86efac', display: 'inline-block' }}>
+              Inquiry Ref: <strong>{state.refCode}</strong>
+            </div>
+            <a
+              href={`/marketplace.html?track=deal&ref=${encodeURIComponent(state.refCode || '')}`}
+              style={{ fontSize: '0.82rem', fontWeight: 700, color: '#15803d', textDecoration: 'underline' }}
+            >
+              Track Viewing Status &rarr;
+            </a>
           </div>
         </div>
       )}

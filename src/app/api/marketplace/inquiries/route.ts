@@ -5,6 +5,31 @@ import {
   updateCloudInquiry,
   CloudInquiry,
 } from '@/lib/cloudStore';
+import { getCurrentUser } from '@/app/actions/authActions';
+
+const VERIFIED_AGENT_EMAILS = [
+  'georgescourser@gmail.com',
+  'oderocarilus@gmail.com',
+];
+
+function resolveRequestEmail(req: NextRequest, userEmail?: string | null): string {
+  let cleanEmail = (userEmail || '').trim().toLowerCase();
+  if (!cleanEmail) {
+    const clientCookie =
+      req.cookies.get('uninest_user_client')?.value ||
+      req.cookies.get('uninest_user_session')?.value;
+    if (clientCookie) {
+      try {
+        const parsed = JSON.parse(decodeURIComponent(clientCookie));
+        cleanEmail = (parsed?.email || '').trim().toLowerCase();
+      } catch {}
+    }
+    if (!cleanEmail) {
+      cleanEmail = (req.headers.get('x-uninest-agent-email') || '').trim().toLowerCase();
+    }
+  }
+  return cleanEmail;
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -100,6 +125,15 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
+    const user = await getCurrentUser().catch(() => null);
+    const callerEmail = resolveRequestEmail(req, user?.email);
+    if (!VERIFIED_AGENT_EMAILS.includes(callerEmail)) {
+      return NextResponse.json(
+        { error: 'Unauthorized: Only verified agents can update inquiry status' },
+        { status: 403 }
+      );
+    }
+
     const body = await req.json();
     const { refCode, status, dealUpdate, agentNotes } = body;
 

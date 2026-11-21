@@ -2,8 +2,9 @@
 
 import { createClient } from '@/utils/supabase/server'
 import { getCurrentUser, syncUserSession } from '@/app/actions/authActions'
+import { getPropertyById } from '@/app/actions/propertyActions'
 import { revalidatePath } from 'next/cache'
-import { addCloudInquiry } from '@/lib/cloudStore'
+import { addCloudInquiry, getCloudDatabase } from '@/lib/cloudStore'
 
 export type InquiryState = {
   success?: boolean
@@ -56,56 +57,58 @@ export async function submitPropertyInquiry(prevState: InquiryState | null, form
 
   try {
     const supabase = await createClient()
+    const resolvedProp = await getPropertyById(propertyId).catch(() => null)
 
-    // Retrieve assigned agent
-    const { data: prop } = await supabase
-      .from('properties')
-      .select('agent_id, title')
-      .eq('id', propertyId)
-      .single()
+    const agentId = resolvedProp?.agent_id || 1
+    const propTitle = resolvedProp?.title || 'Student House Viewing'
+    const propRent = resolvedProp?.rent || 'Property Viewing'
+    const propLocation = resolvedProp?.location || 'Campus Area'
+    const assignedAgentName =
+      resolvedProp?.agents?.name ||
+      (agentId === 2 ? 'Odero Carilus' : 'George Scourser')
 
-    const agentId = prop?.agent_id || 1
+    try {
+      const { error: insertError } = await supabase
+        .from('inquiries')
+        .insert({
+          reference_code: refCode,
+          property_id: propertyId,
+          agent_id: agentId,
+          client_name: clientName,
+          client_phone: clientPhone,
+          client_email: clientEmail || (user?.email ?? ''),
+          preferred_date: preferredDate,
+          preferred_time: preferredTime || 'Flexible Window',
+          message: notes,
+          status: 'Pending',
+          inquiry_type: 'property_viewing',
+          user_id: user?.id || null
+        })
 
-    const { error: insertError } = await supabase
-      .from('inquiries')
-      .insert({
-        reference_code: refCode,
-        property_id: propertyId,
-        agent_id: agentId,
-        client_name: clientName,
-        client_phone: clientPhone,
-        client_email: clientEmail || (user?.email ?? ''),
-        preferred_date: preferredDate,
-        preferred_time: preferredTime || 'Flexible Window',
-        message: notes,
-        status: 'Pending',
-        inquiry_type: 'property_viewing',
-        user_id: user?.id || null
-      })
-
-    if (insertError) {
-      console.warn('Note: inquiries table fallback in effect:', insertError.message)
-    }
+      if (insertError) {
+        console.warn('Note: inquiries table fallback in effect:', insertError.message)
+      }
+    } catch {}
 
     try {
       await addCloudInquiry({
         refCode,
         createdAt: new Date().toISOString(),
         itemId: propertyId,
-        itemTitle: prop?.title || 'Student House Viewing',
-        itemPrice: 'Property Viewing',
-        campus: 'Campus Area',
+        itemTitle: propTitle,
+        itemPrice: propRent,
+        campus: propLocation,
         clientName,
         clientPhone,
         clientEmail: clientEmail || (user?.email ?? ''),
         preferredDate,
         preferredTime: preferredTime || 'Flexible Window',
-        preferredHub: 'On-Site Accompanied Viewing',
+        preferredHub: `${propLocation} (Accompanied Viewing)`,
         notes,
         status: 'Pending Agent Review',
-        agentName: 'Authorized UniNest Agent',
+        agentName: assignedAgentName,
         agentNotes: 'Property viewing inquiry received.',
-        dealUpdate: `Your appointment request (${refCode}) is registered with the supervising agent.`,
+        dealUpdate: `Your appointment request (${refCode}) is registered with ${assignedAgentName}.`,
       })
     } catch (cloudErr) {
       console.warn('Could not save viewing to cloud database:', cloudErr)
@@ -114,7 +117,7 @@ export async function submitPropertyInquiry(prevState: InquiryState | null, form
     return {
       success: true,
       refCode,
-      message: `Your appointment request ${refCode} is registered with the authorized agent. The agent will confirm your accompanied viewing.`
+      message: `Your appointment request ${refCode} is registered with ${assignedAgentName}. The agent will confirm your accompanied viewing.`
     }
   } catch (err: unknown) {
     console.error('Error submitting inquiry:', err)
@@ -144,6 +147,13 @@ export async function getAgentInquiries() {
     throw new Error('Unauthorized: Only verified agents can access client inquiries.')
   }
 
+  try {
+    const db = await getCloudDatabase()
+    if (Array.isArray(db.inquiries) && db.inquiries.length > 0) {
+      return db.inquiries
+    }
+  } catch {}
+
   const { data: inquiries, error } = await supabase
     .from('inquiries')
     .select(`
@@ -163,6 +173,26 @@ export async function getAgentInquiries() {
 // Client status lookup: Returns status and appointment window ONLY (Never reveals private seller contact info)
 export async function lookupInquiryStatus(referenceCode: string) {
   if (!referenceCode) return null
+  const cleanRef = referenceCode.trim().toUpperCase()
+
+  try {
+    const db = await getCloudDatabase()
+    const cloudMatch = (db.inquiries || []).find(
+      (i) => (i.refCode || '').trim().toUpperCase() === cleanRef
+    )
+    if (cloudMatch) {
+      return {
+        referenceCode: cloudMatch.refCode,
+        status: cloudMatch.status,
+        preferredDate: cloudMatch.preferredDate,
+        preferredTime: cloudMatch.preferredTime,
+        agentName: cloudMatch.agentName || 'UniNest Verified Agent',
+        dealUpdate:
+          cloudMatch.dealUpdate ||
+          'Your viewing request is queued with the supervising agent.',
+      }
+    }
+  } catch {}
 
   const supabase = await createClient()
   const { data: inquiry, error } = await supabase

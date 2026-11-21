@@ -1357,7 +1357,13 @@
   }
 
   function fetchAgentPendingSubmissions(agent, callback) {
-    fetch('/api/marketplace?scope=agent')
+    const currentAgent = agent || currentActiveAgent || getCurrentVerifiedAgent();
+    const agentEmail = (currentAgent && currentAgent.email) || '';
+    fetch('/api/marketplace?scope=agent', {
+      headers: {
+        'x-uninest-agent-email': agentEmail,
+      },
+    })
       .then(function(res) { return res.ok ? res.json() : null; })
       .then(function(data) {
         if (data && Array.isArray(data.items)) {
@@ -1840,43 +1846,43 @@
     }
 
     const itemIndex = pending.findIndex(i => i.listingRef === listingRef);
-    if (itemIndex === -1) return;
+    if (itemIndex !== -1) {
+      const item = pending[itemIndex];
 
-    const item = pending[itemIndex];
+      // Remove from pending
+      pending.splice(itemIndex, 1);
+      localStorage.setItem(STORAGE_KEY_PENDING_SUBMISSIONS, JSON.stringify(pending));
 
-    // Remove from pending
-    pending.splice(itemIndex, 1);
-    localStorage.setItem(STORAGE_KEY_PENDING_SUBMISSIONS, JSON.stringify(pending));
+      // Create public item (Stripped of confidential owner phone, email, and room number)
+      const publicItem = {
+        id: item.id,
+        title: item.title,
+        category: item.category,
+        price: item.price,
+        originalPrice: item.originalPrice,
+        condition: item.condition,
+        campus: item.campus,
+        campusName: item.campusName,
+        location: item.location,
+        image: item.image,
+        sellerType: 'Verified Student Listing',
+        listingRef: item.listingRef,
+        agentId: item.assignedAgentId,
+        agentName: item.assignedAgentName,
+        description: item.description,
+        verifiedListing: true,
+        postedAt: 'Just now'
+      };
 
-    // Create public item (Stripped of confidential owner phone, email, and room number)
-    const publicItem = {
-      id: item.id,
-      title: item.title,
-      category: item.category,
-      price: item.price,
-      originalPrice: item.originalPrice,
-      condition: item.condition,
-      campus: item.campus,
-      campusName: item.campusName,
-      location: item.location,
-      image: item.image,
-      sellerType: 'Verified Student Listing',
-      listingRef: item.listingRef,
-      agentId: item.assignedAgentId,
-      agentName: item.assignedAgentName,
-      description: item.description,
-      verifiedListing: true,
-      postedAt: 'Just now'
-    };
-
-    // Add to approved public list
-    try {
-      const storedPub = localStorage.getItem(STORAGE_KEY_PUBLIC);
-      const pubList = storedPub ? JSON.parse(storedPub) : [];
-      pubList.unshift(publicItem);
-      localStorage.setItem(STORAGE_KEY_PUBLIC, JSON.stringify(pubList));
-    } catch (e) {
-      console.error(e);
+      // Add to approved public list
+      try {
+        const storedPub = localStorage.getItem(STORAGE_KEY_PUBLIC);
+        const pubList = storedPub ? JSON.parse(storedPub) : [];
+        pubList.unshift(publicItem);
+        localStorage.setItem(STORAGE_KEY_PUBLIC, JSON.stringify(pubList));
+      } catch (e) {
+        console.error(e);
+      }
     }
 
     renderAgentVettingQueue();
@@ -1884,13 +1890,20 @@
     initHomepageMarketplace();
 
     // Persist approval to central cloud database across all devices
+    const agentEmail = currentAgent.email || '';
     fetch('/api/marketplace', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-uninest-agent-email': agentEmail,
+      },
       body: JSON.stringify({ action: 'approve', listingRef: listingRef }),
     })
       .then(function(res) {
-        if (res.ok) syncMarketplaceFromServer();
+        if (res.ok) {
+          fetchAgentPendingSubmissions(currentAgent);
+          syncMarketplaceFromServer();
+        }
       })
       .catch(function(err) {
         console.warn('Marketplace cloud approve notice:', err);
@@ -1909,9 +1922,13 @@
     const slot = prompt(`Enter scheduled date & time for on-site inspection visit (e.g. Tomorrow at 3:00 PM):`);
     if (!slot || !slot.trim()) return;
 
+    const agentEmail = currentAgent.email || '';
     fetch('/api/marketplace', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-uninest-agent-email': agentEmail,
+      },
       body: JSON.stringify({ action: 'schedule', listingRef: listingRef, updateData: { slot: slot.trim() } }),
     }).catch(function(e) {});
 
@@ -1927,9 +1944,13 @@
     }
     if (!confirm(`Are you sure you want to reject submission ${listingRef}? The seller will be notified to correct defects.`)) return;
 
+    const agentEmail = currentAgent.email || '';
     fetch('/api/marketplace', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-uninest-agent-email': agentEmail,
+      },
       body: JSON.stringify({ action: 'reject', listingRef: listingRef }),
     }).catch(function(e) {});
 
@@ -1971,7 +1992,10 @@
         // Sync inquiry update to central cloud store
         fetch('/api/marketplace/inquiries', {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-uninest-agent-email': currentAgent.email || '',
+          },
           body: JSON.stringify({
             refCode: refCode,
             status: newStatus,
@@ -2349,9 +2373,22 @@
       if (target) {
         target.dealUpdate = msg.trim();
         localStorage.setItem(STORAGE_KEY_INQUIRIES, JSON.stringify(list));
-        renderAgentInquiriesQueue();
-        showToast(`Deal update dispatched for ${refCode}.`);
       }
+      fetch('/api/marketplace/inquiries', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-uninest-agent-email': currentAgent.email || '',
+        },
+        body: JSON.stringify({
+          refCode: refCode,
+          dealUpdate: msg.trim(),
+        }),
+      }).catch(function(err) {
+        console.warn('Deal update cloud sync warning:', err);
+      });
+      renderAgentInquiriesQueue();
+      showToast(`Deal update dispatched for ${refCode}.`);
     } catch (e) {
       console.error(e);
     }

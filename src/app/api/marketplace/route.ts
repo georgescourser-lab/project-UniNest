@@ -26,6 +26,25 @@ function toPublicMarketplaceItem(item: CloudMarketplaceItem): CloudMarketplaceIt
   return publicItem;
 }
 
+function resolveRequestEmail(req: NextRequest, userEmail?: string | null): string {
+  let cleanEmail = (userEmail || '').trim().toLowerCase();
+  if (!cleanEmail) {
+    const clientCookie =
+      req.cookies.get('uninest_user_client')?.value ||
+      req.cookies.get('uninest_user_session')?.value;
+    if (clientCookie) {
+      try {
+        const parsed = JSON.parse(decodeURIComponent(clientCookie));
+        cleanEmail = (parsed?.email || '').trim().toLowerCase();
+      } catch {}
+    }
+    if (!cleanEmail) {
+      cleanEmail = (req.headers.get('x-uninest-agent-email') || '').trim().toLowerCase();
+    }
+  }
+  return cleanEmail;
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -33,6 +52,13 @@ export async function GET(req: NextRequest) {
     const statusFilter = searchParams.get('status');
     const campusFilter = searchParams.get('campus');
     const categoryFilter = searchParams.get('category');
+
+    let isVerifiedAgentCaller = false;
+    if (scope === 'agent') {
+      const user = await getCurrentUser().catch(() => null);
+      const callerEmail = resolveRequestEmail(req, user?.email);
+      isVerifiedAgentCaller = VERIFIED_AGENT_EMAILS.includes(callerEmail);
+    }
 
     const db = await getCloudDatabase();
     const cloudItems = db.marketplace || [];
@@ -98,7 +124,9 @@ export async function GET(req: NextRequest) {
     }
 
     const responseItems =
-      scope === 'agent' ? filtered : filtered.map(toPublicMarketplaceItem);
+      scope === 'agent' && isVerifiedAgentCaller
+        ? filtered
+        : filtered.map(toPublicMarketplaceItem);
 
     return NextResponse.json({
       success: true,
