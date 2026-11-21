@@ -232,17 +232,52 @@ export async function getAllProperties(filters?: {
   } catch {}
 
   const byId = new Map<number, any>()
+  const mergePropertySources = (existing: any, incoming: any) => {
+    if (!existing) return incoming
+    if (!incoming) return existing
+
+    const incomingImages = Array.isArray(incoming.images)
+      ? incoming.images.filter((img: any) => typeof img === 'string' && img.trim())
+      : []
+    const existingImages = Array.isArray(existing.images)
+      ? existing.images.filter((img: any) => typeof img === 'string' && img.trim())
+      : []
+    const mergedImages =
+      incomingImages.length > 0 ? incomingImages : existingImages
+    const incomingImage =
+      typeof incoming.image === 'string' && incoming.image.trim()
+        ? incoming.image
+        : ''
+    const existingImage =
+      typeof existing.image === 'string' && existing.image.trim()
+        ? existing.image
+        : ''
+
+    return {
+      ...existing,
+      ...incoming,
+      image: incomingImage || existingImage || mergedImages[0] || null,
+      images: mergedImages,
+    }
+  }
+
   for (const p of cookieProperties) {
     if (p && typeof p.id === 'number') byId.set(p.id, p)
   }
   for (const p of localProperties) {
-    if (p && typeof p.id === 'number') byId.set(p.id, p)
+    if (p && typeof p.id === 'number') {
+      byId.set(p.id, mergePropertySources(byId.get(p.id), p))
+    }
   }
   for (const p of dbProperties) {
-    if (p && typeof p.id === 'number') byId.set(p.id, p)
+    if (p && typeof p.id === 'number') {
+      byId.set(p.id, mergePropertySources(byId.get(p.id), p))
+    }
   }
   for (const p of cloudProperties) {
-    if (p && typeof p.id === 'number') byId.set(p.id, p)
+    if (p && typeof p.id === 'number') {
+      byId.set(p.id, mergePropertySources(byId.get(p.id), p))
+    }
   }
 
   let merged = Array.from(byId.values()).sort((a, b) => Number(b.id) - Number(a.id))
@@ -526,9 +561,14 @@ export async function addProperty(prevState: any, formData: FormData) {
     const cookieStore = await cookies()
     const compactList = updatedLocal.slice(0, 8).map((p) => {
       const primaryImg =
-        typeof p.image === 'string' && p.image.length < 2500
+        typeof p.image === 'string' &&
+        p.image.length < 2500 &&
+        (p.image.startsWith('data:image/') ||
+          p.image.startsWith('http://') ||
+          p.image.startsWith('https://') ||
+          p.image.startsWith('/'))
           ? p.image
-          : '/images/property-2.svg'
+          : ''
       return {
         id: p.id,
         title: p.title,
@@ -540,7 +580,7 @@ export async function addProperty(prevState: any, formData: FormData) {
         agent_id: p.agent_id,
         amenities: p.amenities,
         image: primaryImg,
-        images: [primaryImg],
+        images: primaryImg ? [primaryImg] : [],
         videos: [],
       }
     })
