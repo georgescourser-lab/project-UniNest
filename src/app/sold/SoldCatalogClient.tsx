@@ -18,20 +18,35 @@ export default function SoldCatalogClient({
   const [activeTab, setActiveTab] = useState<'all' | 'house' | 'item'>('all');
   const [selectedCampus, setSelectedCampus] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
-  const [clientSoldItems, setClientSoldItems] = useState<SoldListing[]>([]);
+  const [clientSoldItems, setClientSoldItems] = useState<SoldListing[]>(serverSoldItems);
   const [selectedListing, setSelectedListing] = useState<SoldListing | null>(null);
 
   useEffect(() => {
-    function loadSoldItems() {
-      try {
-      const mergedClient: SoldListing[] = [];
+    let cancelled = false;
 
+    const mergeSoldItems = (incoming: SoldListing[]) => {
+      if (cancelled || incoming.length === 0) return;
+      setClientSoldItems((previous) => {
+        const combined = [...incoming, ...previous];
+        const seen = new Set<string>();
+        return combined.filter((entry) => {
+          const key = String(entry.listingRef || entry.id);
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      });
+    };
+
+    function loadSoldItems() {
+      const localItems: SoldListing[] = [];
+      try {
       // 1. Read explicitly marked sold items/houses from localStorage
       const rawSold = localStorage.getItem('uninest_sold_items');
       if (rawSold) {
         const parsed = JSON.parse(rawSold);
         if (Array.isArray(parsed)) {
-          mergedClient.push(...parsed);
+          localItems.push(...parsed);
         }
       }
 
@@ -44,8 +59,8 @@ export default function SoldCatalogClient({
             .filter((inq: any) => inq.status === 'Completed')
             .forEach((inq: any) => {
               const ref = inq.refCode || `UN-SOLD-${inq.itemId}`;
-              if (!mergedClient.some((m) => m.listingRef === ref)) {
-                mergedClient.push({
+              if (!localItems.some((m) => m.listingRef === ref)) {
+                localItems.push({
                   id: `inq-sold-${ref}`,
                   title: inq.itemTitle || 'Student Marketplace Item',
                   kind: 'item',
@@ -66,15 +81,16 @@ export default function SoldCatalogClient({
         }
       }
 
-      setClientSoldItems(mergedClient);
       } catch (e) {
         console.warn('Could not read local sold items:', e);
       }
+      mergeSoldItems(localItems);
 
       // Also fetch sold items from central cloud store so other devices see them
       fetch('/api/marketplace?status=sold', { cache: 'no-store' })
         .then((res) => (res.ok ? res.json() : null))
         .then((data) => {
+          if (cancelled) return;
           if (data && Array.isArray(data.items)) {
             const mapped: SoldListing[] = data.items.map((item: any) => ({
               id: `cloud-sold-${item.listingRef || item.id}`,
@@ -92,7 +108,7 @@ export default function SoldCatalogClient({
               description: item.description,
               amenitiesOrCondition: [item.condition || 'Verified Listing'],
             }));
-            setClientSoldItems(mapped);
+            mergeSoldItems(mapped);
           }
         })
         .catch(() => {});
@@ -104,6 +120,7 @@ export default function SoldCatalogClient({
     window.addEventListener('storage', loadSoldItems);
 
     return () => {
+      cancelled = true;
       window.removeEventListener('uninest:live-refresh', loadSoldItems);
       window.removeEventListener('uninest:item-sold', loadSoldItems);
       window.removeEventListener('storage', loadSoldItems);
@@ -446,7 +463,7 @@ export default function SoldCatalogClient({
                     {/* Image with SOLD Overlay Badge */}
                     <div style={{ position: 'relative', height: '210px', overflow: 'hidden', background: '#0f172a' }}>
                       <img
-                        src={item.image}
+                        src={item.image || 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800&q=80'}
                         alt={item.title}
                         style={{
                           width: '100%',
