@@ -22,7 +22,8 @@ export default function SoldCatalogClient({
   const [selectedListing, setSelectedListing] = useState<SoldListing | null>(null);
 
   useEffect(() => {
-    try {
+    function loadSoldItems() {
+      try {
       const mergedClient: SoldListing[] = [];
 
       // 1. Read explicitly marked sold items/houses from localStorage
@@ -66,44 +67,47 @@ export default function SoldCatalogClient({
       }
 
       setClientSoldItems(mergedClient);
-    } catch (e) {
-      console.warn('Could not read local sold items:', e);
+      } catch (e) {
+        console.warn('Could not read local sold items:', e);
+      }
+
+      // Also fetch sold items from central cloud store so other devices see them
+      fetch('/api/marketplace?status=sold', { cache: 'no-store' })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data && Array.isArray(data.items)) {
+            const mapped: SoldListing[] = data.items.map((item: any) => ({
+              id: `cloud-sold-${item.listingRef || item.id}`,
+              title: item.title,
+              kind: 'item' as const,
+              subCategory: item.category || 'Marketplace Item',
+              price: item.price,
+              campus: item.campus,
+              campusName: item.campusName || item.campus,
+              location: item.location,
+              image: item.image,
+              listingRef: item.listingRef || `UN-SOLD-${item.id}`,
+              agentName: item.assignedAgentName || 'Verified UniNest Agent',
+              soldAt: 'Sold',
+              description: item.description,
+              amenitiesOrCondition: [item.condition || 'Verified Listing'],
+            }));
+            setClientSoldItems(mapped);
+          }
+        })
+        .catch(() => {});
     }
 
-    // Also fetch sold items from central cloud store so other devices see them
-    fetch('/api/marketplace?status=sold')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data && Array.isArray(data.items)) {
-          const mapped: SoldListing[] = data.items.map((item: any) => ({
-            id: `cloud-sold-${item.listingRef || item.id}`,
-            title: item.title,
-            kind: 'item' as const,
-            subCategory: item.category || 'Marketplace Item',
-            price: item.price,
-            campus: item.campus,
-            campusName: item.campusName || item.campus,
-            location: item.location,
-            image: item.image,
-            listingRef: item.listingRef || `UN-SOLD-${item.id}`,
-            agentName: item.assignedAgentName || 'Verified UniNest Agent',
-            soldAt: 'Sold',
-            description: item.description,
-            amenitiesOrCondition: [item.condition || 'Verified Listing'],
-          }));
-          setClientSoldItems((prev) => {
-            const combined = [...mapped, ...prev];
-            const seen = new Set<string>();
-            return combined.filter((i) => {
-              const k = i.listingRef || i.id;
-              if (seen.has(k)) return false;
-              seen.add(k);
-              return true;
-            });
-          });
-        }
-      })
-      .catch(() => {});
+    loadSoldItems();
+    window.addEventListener('uninest:live-refresh', loadSoldItems);
+    window.addEventListener('uninest:item-sold', loadSoldItems);
+    window.addEventListener('storage', loadSoldItems);
+
+    return () => {
+      window.removeEventListener('uninest:live-refresh', loadSoldItems);
+      window.removeEventListener('uninest:item-sold', loadSoldItems);
+      window.removeEventListener('storage', loadSoldItems);
+    };
   }, []);
 
   const allSoldListings = useMemo(() => {

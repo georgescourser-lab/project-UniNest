@@ -791,7 +791,9 @@ input:focus, select:focus, textarea:focus {
 
 @media (max-width: 992px) {
   .mobile-menu-btn {
-    display: block;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
   
   .nav-links, .nav-actions { 
@@ -804,11 +806,10 @@ input:focus, select:focus, textarea:focus {
 
   .nav-container.mobile-menu-open {
     background: var(--color-white);
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
+    position: relative;
     flex-wrap: wrap;
+    height: auto;
+    min-height: 80px;
     padding-bottom: 1rem;
     box-shadow: var(--shadow-md);
   }

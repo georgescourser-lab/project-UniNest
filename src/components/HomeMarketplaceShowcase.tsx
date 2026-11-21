@@ -84,11 +84,13 @@ export default function HomeMarketplaceShowcase() {
 
     window.addEventListener('uninest:item-sold', handleItemSold);
     window.addEventListener('storage', handleItemSold);
+    window.addEventListener('uninest:live-refresh', handleItemSold);
 
     return () => {
       cancelled = true;
       window.removeEventListener('uninest:item-sold', handleItemSold);
       window.removeEventListener('storage', handleItemSold);
+      window.removeEventListener('uninest:live-refresh', handleItemSold);
     };
   }, []);
 

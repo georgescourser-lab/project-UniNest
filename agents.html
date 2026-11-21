@@ -25,7 +25,7 @@
         <img src="images/logo.jpg" alt="UniNest Logo" style="height: 2rem; width: auto;" />
         UniNest
       </a>
-      <button class="mobile-menu-btn" aria-label="Toggle menu" onclick="this.parentElement.classList.toggle('mobile-menu-open')">
+      <button class="mobile-menu-btn" aria-label="Toggle menu" aria-controls="site-navigation" aria-expanded="false">
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
       </button>
       <div class="nav-links">
@@ -33,6 +33,7 @@
         <a href="/search">Properties</a>
         <a href="/agents" class="active">Agents</a>
         <a href="/marketplace.html">Marketplace</a>
+        <a href="/sold">Sold</a>
         <a href="/sold">Sold</a>
       </div>
       <div class="nav-actions">
@@ -126,6 +127,7 @@
   <script src="js/data.js"></script>
   <script src="js/supabaseClient.js"></script>
   <script src="js/auth.js"></script>
+  <script src="js/live-sync.js"></script>
   <script src="js/main.js"></script>
 </body>
 </html>

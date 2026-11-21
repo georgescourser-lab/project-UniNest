@@ -22,6 +22,33 @@ document.addEventListener('DOMContentLoaded', async () => {
 function initNavbar() {
   const navbar = document.querySelector('.navbar');
   if (navbar) {
+    const menuButton = navbar.querySelector('.mobile-menu-btn');
+    const navContainer = navbar.querySelector('.nav-container');
+    if (menuButton && navContainer) {
+      menuButton.setAttribute('aria-expanded', 'false');
+      menuButton.addEventListener('click', () => {
+        const open = navContainer.classList.toggle('mobile-menu-open');
+        menuButton.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
+      navContainer.querySelectorAll('a').forEach((link) => {
+        link.addEventListener('click', () => {
+          navContainer.classList.remove('mobile-menu-open');
+          menuButton.setAttribute('aria-expanded', 'false');
+        });
+      });
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+          navContainer.classList.remove('mobile-menu-open');
+          menuButton.setAttribute('aria-expanded', 'false');
+        }
+      });
+      document.addEventListener('click', (event) => {
+        if (!navContainer.contains(event.target)) {
+          navContainer.classList.remove('mobile-menu-open');
+          menuButton.setAttribute('aria-expanded', 'false');
+        }
+      });
+    }
     window.addEventListener('scroll', () => {
       if (window.scrollY > 50) {
         navbar.classList.add('scrolled');

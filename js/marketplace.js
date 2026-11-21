@@ -88,6 +88,9 @@
   // Auto-sync on script load
   syncMarketplaceFromServer();
 
+  window.setInterval(syncMarketplaceFromServer, 8000);
+  window.addEventListener('focus', syncMarketplaceFromServer);
+
   // Retrieve public catalog items (Private contact information strictly excluded)
   function getAllItems() {
     const soldRefs = new Set();

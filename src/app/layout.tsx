@@ -3,6 +3,7 @@ import Link from "next/link";
 import "./globals.css";
 import SiteNav from "@/components/SiteNav";
 import { AuthProvider } from "@/context/AuthContext";
+import LiveDataSync from "@/components/LiveDataSync";
 
 export const metadata: Metadata = {
   title: "UniNest | Student House Hunting",
@@ -35,6 +36,7 @@ export default function RootLayout({
       <body className="page-home min-h-full flex flex-col">
         <AuthProvider>
           <SiteNav />
+          <LiveDataSync />
 
           <main className="flex-grow">
             {children}

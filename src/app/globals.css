@@ -1036,6 +1036,7 @@ input:focus, select:focus, textarea:focus {
     padding: 1rem 0;
     gap: 0.75rem;
     align-items: center;
+    flex-wrap: wrap;
   }
 
   .nav-menu {
