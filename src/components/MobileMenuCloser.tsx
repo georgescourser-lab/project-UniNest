@@ -13,10 +13,11 @@ export default function MobileMenuCloser() {
     if (!toggle || !button) return;
 
     const syncMenu = () => {
-      button?.setAttribute('aria-expanded', toggle.checked ? 'true' : 'false');
-      button?.setAttribute('aria-pressed', toggle.checked ? 'true' : 'false');
-      menu?.setAttribute('aria-hidden', toggle.checked ? 'false' : 'true');
-      menu?.classList.toggle('mobile-menu-open', toggle.checked);
+      const open = toggle.checked;
+      button.setAttribute('aria-expanded', open ? 'true' : 'false');
+      button.setAttribute('aria-pressed', open ? 'true' : 'false');
+      menu?.setAttribute('aria-hidden', open ? 'false' : 'true');
+      menu?.classList.toggle('mobile-menu-open', open);
     };
 
     const toggleMenu = (event: MouseEvent) => {
@@ -28,7 +29,6 @@ export default function MobileMenuCloser() {
 
     toggle.checked = false;
     syncMenu();
-    toggle.addEventListener('change', syncMenu);
     button.addEventListener('click', toggleMenu);
 
     const closeOnLink = (event: MouseEvent) => {
@@ -58,7 +58,6 @@ export default function MobileMenuCloser() {
     document.addEventListener('keydown', closeOnEscape);
 
     return () => {
-      toggle.removeEventListener('change', syncMenu);
       button.removeEventListener('click', toggleMenu);
       document.removeEventListener('click', closeOnLink);
       document.removeEventListener('click', closeOnOutsideClick);
