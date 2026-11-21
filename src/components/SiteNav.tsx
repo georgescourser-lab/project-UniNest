@@ -17,14 +17,20 @@ export default async function SiteNav() {
           <img src="/images/logo.jpg" alt="UniNest Logo" style={{ height: '24px', width: 'auto', borderRadius: '4px' }} />
           UniNest
         </Link>
-        <label className="mobile-menu-btn" htmlFor="site-nav-toggle" role="button" tabIndex={0} aria-label="Toggle menu" aria-controls="site-navigation" aria-expanded="false">
+        <button
+          type="button"
+          className="mobile-menu-btn"
+          aria-label="Toggle menu"
+          aria-controls="site-navigation"
+          aria-expanded="false"
+        >
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="3" y1="12" x2="21" y2="12"></line>
             <line x1="3" y1="6" x2="21" y2="6"></line>
             <line x1="3" y1="18" x2="21" y2="18"></line>
           </svg>
-        </label>
+        </button>
         <div id="site-navigation" className="nav-menu">
           <NavLinks isLoggedIn={!!sessionUser} isAdmin={isVerifiedAgent} />
           <SiteNavClient

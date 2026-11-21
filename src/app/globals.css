@@ -1062,6 +1062,10 @@ input:focus, select:focus, textarea:focus {
     display: flex;
   }
 
+  .nav-menu.mobile-menu-open {
+    display: flex;
+  }
+
   .nav-links,
   .nav-actions {
     width: 100%;

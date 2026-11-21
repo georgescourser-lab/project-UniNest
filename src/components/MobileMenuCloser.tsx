@@ -9,15 +9,27 @@ export default function MobileMenuCloser() {
   useEffect(() => {
     const toggle = document.getElementById('site-nav-toggle') as HTMLInputElement;
     const button = document.querySelector('[aria-controls="site-navigation"]') as HTMLElement | null;
-    if (!toggle) return;
+    const menu = document.getElementById('site-navigation');
+    if (!toggle || !button) return;
 
     const syncMenu = () => {
       button?.setAttribute('aria-expanded', toggle.checked ? 'true' : 'false');
+      button?.setAttribute('aria-pressed', toggle.checked ? 'true' : 'false');
+      menu?.setAttribute('aria-hidden', toggle.checked ? 'false' : 'true');
+      menu?.classList.toggle('mobile-menu-open', toggle.checked);
+    };
+
+    const toggleMenu = (event: MouseEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggle.checked = !toggle.checked;
+      syncMenu();
     };
 
     toggle.checked = false;
     syncMenu();
     toggle.addEventListener('change', syncMenu);
+    button.addEventListener('click', toggleMenu);
 
     const closeOnLink = (event: MouseEvent) => {
       if ((event.target as HTMLElement).closest('#site-navigation a')) {
@@ -47,6 +59,7 @@ export default function MobileMenuCloser() {
 
     return () => {
       toggle.removeEventListener('change', syncMenu);
+      button.removeEventListener('click', toggleMenu);
       document.removeEventListener('click', closeOnLink);
       document.removeEventListener('click', closeOnOutsideClick);
       document.removeEventListener('keydown', closeOnEscape);
