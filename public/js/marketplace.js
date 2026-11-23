@@ -10,19 +10,34 @@
   const STORAGE_KEY_PUBLIC = 'uninest_posted_marketplace_items';
   const STORAGE_KEY_PENDING_SUBMISSIONS = 'uninest_pending_verification_submissions';
   const STORAGE_KEY_INQUIRIES = 'uninest_agent_inquiries';
+  const STORAGE_KEY_DELETED_REFS = 'uninest_deleted_marketplace_refs';
+  const CLEAN_SLATE_VERSION = 'uninest_clean_slate_v3_20261124';
+  const RESET_EPOCH_ID = 1795468000000;
 
-  const SEED_SUBMISSION_IDS = new Set([991, 992, 1, 2, 3, 4, 5, 6, 7, 8]);
-  const SEED_SUBMISSION_REFS = new Set(['UN-VET-7821', 'UN-VET-8430', 'UN-MKT-101', 'UN-MKT-102', 'UN-MKT-103', 'UN-MKT-104', 'UN-MKT-105', 'UN-MKT-106', 'UN-MKT-107', 'UN-MKT-108']);
+  const SEED_SUBMISSION_IDS = new Set([991, 992, 1, 2, 3, 4, 5, 6, 7, 8, 8001, 9001]);
+  const SEED_SUBMISSION_REFS = new Set(['UN-VET-7821', 'UN-VET-8430', 'UN-VET-8001', 'UN-MKT-101', 'UN-MKT-102', 'UN-MKT-103', 'UN-MKT-104', 'UN-MKT-105', 'UN-MKT-106', 'UN-MKT-107', 'UN-MKT-108']);
   const SEED_INQUIRY_REFS = new Set(['UN-INQ-40812', 'UN-INQ-51920']);
 
   // Ensure any legacy seeded placeholder items/submissions/inquiries are purged
   function initDefaultSubmissions() {
     try {
+      if (localStorage.getItem('uninest_storage_version') !== CLEAN_SLATE_VERSION) {
+        localStorage.removeItem(STORAGE_KEY_PUBLIC);
+        localStorage.removeItem('uninest_public_marketplace_items');
+        localStorage.removeItem(STORAGE_KEY_PENDING_SUBMISSIONS);
+        localStorage.removeItem('uninest_sold_items');
+        localStorage.removeItem(STORAGE_KEY_INQUIRIES);
+        localStorage.removeItem(STORAGE_KEY_DELETED_REFS);
+        document.cookie = 'uninest_posted_houses_meta=; path=/; max-age=0; SameSite=Lax';
+        document.cookie = 'uninest_sold_houses_archive=; path=/; max-age=0; SameSite=Lax';
+        localStorage.setItem('uninest_storage_version', CLEAN_SLATE_VERSION);
+      }
+
       const rawPending = localStorage.getItem(STORAGE_KEY_PENDING_SUBMISSIONS);
       if (rawPending) {
         const parsed = JSON.parse(rawPending);
         if (Array.isArray(parsed)) {
-          const cleaned = parsed.filter(item => !SEED_SUBMISSION_IDS.has(Number(item.id)) && !SEED_SUBMISSION_REFS.has(item.listingRef));
+          const cleaned = parsed.filter(item => item && Number(item.id) >= RESET_EPOCH_ID && !SEED_SUBMISSION_IDS.has(Number(item.id)) && !SEED_SUBMISSION_REFS.has(item.listingRef));
           localStorage.setItem(STORAGE_KEY_PENDING_SUBMISSIONS, JSON.stringify(cleaned));
         }
       }
@@ -30,7 +45,7 @@
       if (rawPublic) {
         const parsedPub = JSON.parse(rawPublic);
         if (Array.isArray(parsedPub)) {
-          const cleanedPub = parsedPub.filter(item => !SEED_SUBMISSION_IDS.has(Number(item.id)) && !SEED_SUBMISSION_REFS.has(item.listingRef));
+          const cleanedPub = parsedPub.filter(item => item && Number(item.id) >= RESET_EPOCH_ID && !SEED_SUBMISSION_IDS.has(Number(item.id)) && !SEED_SUBMISSION_REFS.has(item.listingRef));
           localStorage.setItem(STORAGE_KEY_PUBLIC, JSON.stringify(cleanedPub));
         }
       }
@@ -60,19 +75,61 @@
   let serverMarketplaceItems = [];
   let isFetchingServerItems = false;
 
+  function getDeletedRefsSet() {
+    const deleted = new Set();
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY_DELETED_REFS);
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) arr.forEach(function(r) { deleted.add(String(r)); });
+      }
+    } catch (e) {}
+    return deleted;
+  }
+
+  function recordDeletedRef(itemId, itemRef) {
+    try {
+      const set = getDeletedRefsSet();
+      if (itemId != null) set.add(String(itemId));
+      if (itemRef) set.add(String(itemRef));
+      localStorage.setItem(STORAGE_KEY_DELETED_REFS, JSON.stringify(Array.from(set)));
+    } catch (e) {}
+  }
+
   function syncMarketplaceFromServer(callback) {
     if (isFetchingServerItems) return;
     isFetchingServerItems = true;
-    fetch('/api/marketplace')
+    fetch('/api/marketplace', { cache: 'no-store' })
       .then(function(res) { return res.ok ? res.json() : null; })
       .then(function(data) {
         isFetchingServerItems = false;
         if (data && Array.isArray(data.items)) {
-          serverMarketplaceItems = data.items;
+          const deletedRefs = getDeletedRefsSet();
+          let localStored = [];
           try {
-            localStorage.setItem(STORAGE_KEY_PUBLIC, JSON.stringify(data.items));
+            const rawLocal = localStorage.getItem(STORAGE_KEY_PUBLIC);
+            if (rawLocal) {
+              const parsed = JSON.parse(rawLocal);
+              if (Array.isArray(parsed)) localStored = parsed;
+            }
+          } catch (e) {}
+
+          const seen = new Set();
+          const merged = [];
+          for (const item of [...data.items, ...localStored]) {
+            if (!item || Number(item.id) < RESET_EPOCH_ID) continue;
+            const refKey = String(item.listingRef || item.id);
+            if (seen.has(refKey)) continue;
+            if (deletedRefs.has(String(item.id)) || (item.listingRef && deletedRefs.has(String(item.listingRef)))) continue;
+            seen.add(refKey);
+            merged.push(item);
+          }
+
+          serverMarketplaceItems = merged;
+          try {
+            localStorage.setItem(STORAGE_KEY_PUBLIC, JSON.stringify(merged));
           } catch(e) {}
-          if (typeof callback === 'function') callback(data.items);
+          if (typeof callback === 'function') callback(merged);
           if (typeof window.__uninestReRenderMarketplace === 'function') {
             window.__uninestReRenderMarketplace();
           }
@@ -90,7 +147,7 @@
 
   // Retrieve public catalog items (Private contact information strictly excluded)
   function getAllItems() {
-    const soldRefs = new Set();
+    const soldRefs = getDeletedRefsSet();
     try {
       const rawSold = localStorage.getItem('uninest_sold_items');
       if (rawSold) {
@@ -106,18 +163,13 @@
 
     function isItemSold(item) {
       if (!item) return true;
-      if (item.status && item.status.toLowerCase() === 'sold') return true;
+      if (Number(item.id) < RESET_EPOCH_ID) return true;
+      if (item.status && item.status.toLowerCase() !== 'live') return true;
       const ref = item.listingRef ? String(item.listingRef) : null;
       const idStr = item.id != null ? String(item.id) : null;
       if (ref && soldRefs.has(ref)) return true;
       if (idStr && soldRefs.has(idStr)) return true;
       return false;
-    }
-
-    if (serverMarketplaceItems && serverMarketplaceItems.length > 0) {
-      return serverMarketplaceItems.filter(function(i) {
-        return !isItemSold(i);
-      });
     }
 
     let baseItems = [];
@@ -137,7 +189,8 @@
 
     const seen = new Set();
     const result = [];
-    for (const item of [...localApproved, ...baseItems]) {
+    const combinedSources = [...(serverMarketplaceItems || []), ...(localApproved || []), ...(baseItems || [])];
+    for (const item of combinedSources) {
       if (isItemSold(item)) continue;
       const key = item.listingRef || item.id;
       if (seen.has(key)) continue;
@@ -155,8 +208,8 @@
         image: item.image,
         sellerType: 'Verified Student Listing',
         listingRef: item.listingRef || `UN-MKT-${item.id}`,
-        agentId: item.agentId || 1,
-        agentName: item.agentName || 'UniNest Verified Campus Agent',
+        agentId: item.agentId || item.assignedAgentId || 1,
+        agentName: item.agentName || item.assignedAgentName || 'UniNest Verified Campus Agent',
         description: item.description,
         verifiedListing: true,
         postedAt: item.postedAt || 'Recently'
@@ -1870,16 +1923,22 @@
         agentId: item.assignedAgentId,
         agentName: item.assignedAgentName,
         description: item.description,
+        status: 'Live',
         verifiedListing: true,
         postedAt: 'Just now'
       };
 
-      // Add to approved public list
+      // Add to in-memory serverMarketplaceItems and approved public localStorage
+      serverMarketplaceItems = [
+        publicItem,
+        ...(serverMarketplaceItems || []).filter(i => i.listingRef !== item.listingRef && i.id != item.id)
+      ];
       try {
         const storedPub = localStorage.getItem(STORAGE_KEY_PUBLIC);
         const pubList = storedPub ? JSON.parse(storedPub) : [];
-        pubList.unshift(publicItem);
-        localStorage.setItem(STORAGE_KEY_PUBLIC, JSON.stringify(pubList));
+        const filteredPub = pubList.filter(i => i.listingRef !== item.listingRef && i.id != item.id);
+        filteredPub.unshift(publicItem);
+        localStorage.setItem(STORAGE_KEY_PUBLIC, JSON.stringify(filteredPub));
       } catch (e) {
         console.error(e);
       }
@@ -2216,7 +2275,8 @@
 
     if (!confirmed) return;
 
-    // 1. Remove from localStorage STORAGE_KEY_PUBLIC
+    // 1. Remove from localStorage STORAGE_KEY_PUBLIC and record tombstone
+    recordDeletedRef(itemId, itemRef || targetItem.listingRef);
     try {
       const stored = localStorage.getItem(STORAGE_KEY_PUBLIC);
       if (stored) {
@@ -2302,7 +2362,8 @@
         localStorage.setItem('uninest_sold_items', JSON.stringify(soldList));
       }
 
-      // 2. Remove from localStorage STORAGE_KEY_PUBLIC
+      // 2. Remove from localStorage STORAGE_KEY_PUBLIC and record tombstone
+      recordDeletedRef(itemId, itemRef || targetItem.listingRef);
       const stored = localStorage.getItem(STORAGE_KEY_PUBLIC);
       if (stored) {
         let pubList = JSON.parse(stored);

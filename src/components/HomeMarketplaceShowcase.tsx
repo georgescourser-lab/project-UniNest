@@ -33,7 +33,8 @@ export default function HomeMarketplaceShowcase() {
     function filterOutSold(items: MarketplaceItem[]): MarketplaceItem[] {
       const soldRefs = getSoldRefs();
       return items.filter((item) => {
-        if ((item as any).status && (item as any).status.toLowerCase() === 'sold') {
+        if (!item || Number(item.id) < 1795468000000) return false;
+        if ((item as any).status && (item as any).status.toLowerCase() !== 'live') {
           return false;
         }
         if (item.listingRef && soldRefs.has(String(item.listingRef))) return false;
@@ -43,28 +44,30 @@ export default function HomeMarketplaceShowcase() {
     }
 
     async function loadLiveMarketplace() {
+      let serverItems: MarketplaceItem[] = [];
+      let fetchedFromServer = false;
       try {
-        const res = await fetch('/api/marketplace');
+        const res = await fetch('/api/marketplace', { cache: 'no-store' });
         if (res.ok) {
           const json = await res.json();
-          if (!cancelled && Array.isArray(json?.items) && json.items.length > 0) {
-            setLiveItems(filterOutSold(json.items));
-            return;
+          if (Array.isArray(json?.items)) {
+            serverItems = json.items;
+            fetchedFromServer = true;
           }
         }
       } catch (e) {
         console.warn('Error fetching live marketplace items:', e);
       }
 
+      let localItems: MarketplaceItem[] = [];
       try {
         const stored =
           localStorage.getItem('uninest_posted_marketplace_items') ||
           localStorage.getItem('uninest_public_marketplace_items');
         if (stored) {
           const parsed = JSON.parse(stored);
-          if (!cancelled && Array.isArray(parsed) && parsed.length > 0) {
-            setLiveItems(filterOutSold([...parsed, ...MARKETPLACE_ITEMS]));
-            return;
+          if (Array.isArray(parsed)) {
+            localItems = parsed;
           }
         }
       } catch (e) {
@@ -72,7 +75,16 @@ export default function HomeMarketplaceShowcase() {
       }
 
       if (!cancelled) {
-        setLiveItems(filterOutSold(MARKETPLACE_ITEMS));
+        const seen = new Set<string>();
+        const combined: MarketplaceItem[] = [];
+        for (const item of [...serverItems, ...localItems, ...MARKETPLACE_ITEMS]) {
+          if (!item) continue;
+          const key = String(item.listingRef || item.id);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          combined.push(item);
+        }
+        setLiveItems(filterOutSold(combined));
       }
     }
 

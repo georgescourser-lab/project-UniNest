@@ -2,6 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
+export const RESET_EPOCH_ID = 1795468000000;
+
 export interface CloudProperty {
   id: number;
   title: string;
@@ -70,6 +72,9 @@ export interface CloudDatabase {
   properties: CloudProperty[];
   marketplace: CloudMarketplaceItem[];
   inquiries: CloudInquiry[];
+  deletedPropertyIds?: number[];
+  deletedMarketplaceRefs?: string[];
+  resetEpoch?: number;
   updatedAt?: string;
 }
 
@@ -91,7 +96,6 @@ function getResendKey(): string {
     return fromEnv;
   }
 
-  // Fallback: read .env.local and .env from disk directly
   const envFiles = ['.env.local', '.env'];
   for (const fileName of envFiles) {
     try {
@@ -122,38 +126,204 @@ declare global {
   var __uninestLiveCloudDbTimestamp: number | undefined;
   // eslint-disable-next-line no-var
   var __uninestStoreBroadcastId: string | undefined;
+  // eslint-disable-next-line no-var
+  var __uninestInFlightCloudFetch: Promise<CloudDatabase | null> | undefined;
 }
 
-function getLocalBackupPath(): string {
+function createEmptyDb(): CloudDatabase {
+  return {
+    properties: [],
+    marketplace: [],
+    inquiries: [],
+    deletedPropertyIds: [],
+    deletedMarketplaceRefs: [],
+    resetEpoch: RESET_EPOCH_ID,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function sanitizeDb(raw: any): CloudDatabase | null {
+  if (!raw || typeof raw !== 'object') return null;
+
+  // Reject any pre-reset snapshot that still contains legacy placeholder IDs (< RESET_EPOCH_ID)
+  const deletedPropIds = new Set<number>(
+    Array.isArray(raw.deletedPropertyIds)
+      ? raw.deletedPropertyIds.map((id: any) => Number(id)).filter((n: number) => !isNaN(n))
+      : []
+  );
+  const deletedMktRefs = new Set<string>(
+    Array.isArray(raw.deletedMarketplaceRefs)
+      ? raw.deletedMarketplaceRefs.map((r: any) => String(r).trim()).filter(Boolean)
+      : []
+  );
+
+  const properties: CloudProperty[] = Array.isArray(raw.properties)
+    ? raw.properties.filter((p: any) => {
+        if (!p || typeof p.id !== 'number') return false;
+        if (p.id < RESET_EPOCH_ID) return false;
+        if (deletedPropIds.has(Number(p.id))) return false;
+        return true;
+      })
+    : [];
+
+  const marketplace: CloudMarketplaceItem[] = Array.isArray(raw.marketplace)
+    ? raw.marketplace.filter((m: any) => {
+        if (!m || !m.id) return false;
+        if (Number(m.id) < RESET_EPOCH_ID) return false;
+        if (deletedMktRefs.has(String(m.id))) return false;
+        if (m.listingRef && deletedMktRefs.has(String(m.listingRef))) return false;
+        return true;
+      })
+    : [];
+
+  const inquiries: CloudInquiry[] = Array.isArray(raw.inquiries)
+    ? raw.inquiries.filter((i: any) => i && i.refCode)
+    : [];
+
+  return {
+    properties,
+    marketplace,
+    inquiries,
+    deletedPropertyIds: Array.from(deletedPropIds),
+    deletedMarketplaceRefs: Array.from(deletedMktRefs),
+    resetEpoch: RESET_EPOCH_ID,
+    updatedAt: raw.updatedAt || new Date().toISOString(),
+  };
+}
+
+function mergeDatabases(...sources: (CloudDatabase | null | undefined)[]): CloudDatabase {
+  const valid = sources.map(sanitizeDb).filter(Boolean) as CloudDatabase[];
+  if (valid.length === 0) return createEmptyDb();
+
+  const deletedPropIds = new Set<number>();
+  const deletedMktRefs = new Set<string>();
+
+  for (const src of valid) {
+    (src.deletedPropertyIds || []).forEach((id) => deletedPropIds.add(Number(id)));
+    (src.deletedMarketplaceRefs || []).forEach((ref) => deletedMktRefs.add(String(ref)));
+  }
+
+  // Merge properties by id (earlier sources in `valid` take priority if newer, so order sources newest-first)
+  const sortedSources = [...valid].sort((a, b) => {
+    const tA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+    const tB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+    return tB - tA;
+  });
+
+  const propMap = new Map<number, CloudProperty>();
+  for (const src of sortedSources) {
+    for (const p of src.properties || []) {
+      const id = Number(p.id);
+      if (id < RESET_EPOCH_ID || deletedPropIds.has(id)) continue;
+      const existing = propMap.get(id);
+      if (!existing) {
+        propMap.set(id, p);
+      } else {
+        // Preserve images and sold status
+        const bestImages =
+          Array.isArray(existing.images) && existing.images.length > 0
+            ? existing.images
+            : Array.isArray(p.images)
+            ? p.images
+            : [];
+        propMap.set(id, {
+          ...p,
+          ...existing,
+          is_sold: Boolean(existing.is_sold || p.is_sold),
+          image: existing.image || p.image || bestImages[0] || null,
+          images: bestImages,
+        });
+      }
+    }
+  }
+
+  const mktMap = new Map<string, CloudMarketplaceItem>();
+  const statusRank: Record<string, number> = {
+    Sold: 4,
+    Rejected: 3,
+    Live: 2,
+    'Pending Agent Verification': 1,
+  };
+
+  for (const src of sortedSources) {
+    for (const m of src.marketplace || []) {
+      const idNum = Number(m.id);
+      const refKey = m.listingRef || String(m.id);
+      if (idNum < RESET_EPOCH_ID) continue;
+      if (deletedMktRefs.has(String(m.id)) || (m.listingRef && deletedMktRefs.has(m.listingRef))) {
+        continue;
+      }
+      const existing = mktMap.get(refKey);
+      if (!existing) {
+        mktMap.set(refKey, m);
+      } else {
+        const rankExisting = statusRank[existing.status] || 0;
+        const rankIncoming = statusRank[m.status] || 0;
+        const winner = rankIncoming > rankExisting ? { ...existing, ...m } : { ...m, ...existing };
+        mktMap.set(refKey, winner);
+      }
+    }
+  }
+
+  const inqMap = new Map<string, CloudInquiry>();
+  for (const src of sortedSources) {
+    for (const inq of src.inquiries || []) {
+      if (!inq || !inq.refCode) continue;
+      const key = inq.refCode.trim().toUpperCase();
+      if (!inqMap.has(key)) {
+        inqMap.set(key, inq);
+      }
+    }
+  }
+
+  return {
+    properties: Array.from(propMap.values()).sort((a, b) => Number(b.id) - Number(a.id)),
+    marketplace: Array.from(mktMap.values()).sort((a, b) => Number(b.id) - Number(a.id)),
+    inquiries: Array.from(inqMap.values()),
+    deletedPropertyIds: Array.from(deletedPropIds),
+    deletedMarketplaceRefs: Array.from(deletedMktRefs),
+    resetEpoch: RESET_EPOCH_ID,
+    updatedAt: sortedSources[0]?.updatedAt || new Date().toISOString(),
+  };
+}
+
+function readLocalBackup(): CloudDatabase | null {
+  const candidates: CloudDatabase[] = [];
+  const paths = [
+    path.join(os.tmpdir(), 'uninest-cloud-database.json'),
+    path.join(process.cwd(), 'data', 'cloud-database.json'),
+  ];
+
+  for (const p of paths) {
+    try {
+      if (fs.existsSync(p)) {
+        const raw = fs.readFileSync(p, 'utf8');
+        const parsed = sanitizeDb(JSON.parse(raw));
+        if (parsed) candidates.push(parsed);
+      }
+    } catch {}
+  }
+
+  if (candidates.length === 0) return null;
+  return mergeDatabases(...candidates);
+}
+
+function writeLocalBackup(db: CloudDatabase) {
+  const payload = JSON.stringify(db, null, 2);
+
+  // 1. Always write to OS tmpdir (writable on both Vercel serverless & local dev)
+  try {
+    const tmpPath = path.join(os.tmpdir(), 'uninest-cloud-database.json');
+    fs.writeFileSync(tmpPath, payload, 'utf8');
+  } catch {}
+
+  // 2. Also write to workspace data/cloud-database.json when writable
   try {
     const dataDir = path.join(process.cwd(), 'data');
     if (!fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
     }
-    return path.join(dataDir, 'cloud-database.json');
-  } catch {
-    return path.join(os.tmpdir(), 'uninest-cloud-database.json');
-  }
-}
-
-function readLocalBackup(): CloudDatabase | null {
-  try {
-    const p = getLocalBackupPath();
-    if (fs.existsSync(p)) {
-      const raw = fs.readFileSync(p, 'utf8');
-      const parsed = JSON.parse(raw);
-      if (parsed && Array.isArray(parsed.properties)) {
-        return parsed;
-      }
-    }
-  } catch {}
-  return null;
-}
-
-function writeLocalBackup(db: CloudDatabase) {
-  try {
-    const p = getLocalBackupPath();
-    fs.writeFileSync(p, JSON.stringify(db, null, 2), 'utf8');
+    fs.writeFileSync(path.join(dataDir, 'cloud-database.json'), payload, 'utf8');
   } catch {}
 }
 
@@ -161,65 +331,40 @@ async function fetchFromCloud(): Promise<CloudDatabase | null> {
   const key = getResendKey();
   if (!key) return null;
 
-  const targetId = globalThis.__uninestStoreBroadcastId || STORE_BROADCAST_ID;
-
-  try {
-    const res = await fetch(`https://api.resend.com/broadcasts/${targetId}`, {
-      headers: { Authorization: `Bearer ${key}` },
-      cache: 'no-store',
-    });
-    if (res.ok) {
-      const doc = await res.json();
-      if (doc?.text) {
-        const parsed = JSON.parse(doc.text);
-        if (parsed && Array.isArray(parsed.properties)) {
-          return {
-            properties: Array.isArray(parsed.properties) ? parsed.properties : [],
-            marketplace: Array.isArray(parsed.marketplace) ? parsed.marketplace : [],
-            inquiries: Array.isArray(parsed.inquiries) ? parsed.inquiries : [],
-            updatedAt: parsed.updatedAt || new Date().toISOString(),
-          };
-        }
-      }
-    }
-  } catch (err) {
-    console.warn('fetchFromCloud error:', err);
+  if (globalThis.__uninestInFlightCloudFetch) {
+    return globalThis.__uninestInFlightCloudFetch;
   }
 
-  // If broadcast not found by ID, try finding or creating by name
-  try {
-    const listRes = await fetch('https://api.resend.com/broadcasts', {
-      headers: { Authorization: `Bearer ${key}` },
-      cache: 'no-store',
-    });
-    if (listRes.ok) {
-      const listData = await listRes.json();
-      const match = (listData.data || []).find((b: any) => b.name === STORE_BROADCAST_NAME);
-      if (match?.id) {
-        globalThis.__uninestStoreBroadcastId = match.id;
-        const getRes = await fetch(`https://api.resend.com/broadcasts/${match.id}`, {
-          headers: { Authorization: `Bearer ${key}` },
-          cache: 'no-store',
-        });
-        if (getRes.ok) {
-          const doc = await getRes.json();
-          if (doc?.text) {
-            const parsed = JSON.parse(doc.text);
-            return {
-              properties: Array.isArray(parsed.properties) ? parsed.properties : [],
-              marketplace: Array.isArray(parsed.marketplace) ? parsed.marketplace : [],
-              inquiries: Array.isArray(parsed.inquiries) ? parsed.inquiries : [],
-              updatedAt: parsed.updatedAt || new Date().toISOString(),
-            };
-          }
-        }
-      }
-    }
-  } catch (err) {
-    console.warn('fetchFromCloud by name error:', err);
-  }
+  const doFetch = async (): Promise<CloudDatabase | null> => {
+    const targetId = globalThis.__uninestStoreBroadcastId || STORE_BROADCAST_ID;
 
-  return null;
+    try {
+      const res = await fetch(`https://api.resend.com/broadcasts/${targetId}`, {
+        headers: { Authorization: `Bearer ${key}` },
+        cache: 'no-store',
+      });
+      if (res.ok) {
+        const doc = await res.json();
+        if (doc?.text) {
+          const parsed = sanitizeDb(JSON.parse(doc.text));
+          if (parsed) return parsed;
+        }
+      } else if (res.status === 429) {
+        // Rate limited by Resend (2 req/s) — do not overwrite local cache
+        return null;
+      }
+    } catch (err) {
+      console.warn('fetchFromCloud error:', err);
+    }
+
+    return null;
+  };
+
+  globalThis.__uninestInFlightCloudFetch = doFetch().finally(() => {
+    globalThis.__uninestInFlightCloudFetch = undefined;
+  });
+
+  return globalThis.__uninestInFlightCloudFetch;
 }
 
 async function persistToCloud(db: CloudDatabase): Promise<boolean> {
@@ -229,25 +374,35 @@ async function persistToCloud(db: CloudDatabase): Promise<boolean> {
   const targetId = globalThis.__uninestStoreBroadcastId || STORE_BROADCAST_ID;
   const payload = JSON.stringify(db);
 
-  try {
-    const patchRes = await fetch(`https://api.resend.com/broadcasts/${targetId}`, {
-      method: 'PATCH',
-      headers: {
-        Authorization: `Bearer ${key}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        text: payload,
-      }),
-    });
-    if (patchRes.ok) {
-      return true;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const patchRes = await fetch(`https://api.resend.com/broadcasts/${targetId}`, {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${key}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: payload,
+        }),
+      });
+      if (patchRes.ok) {
+        return true;
+      }
+      if (patchRes.status === 429 && attempt === 0) {
+        await new Promise((r) => setTimeout(r, 1100));
+        continue;
+      }
+      if (patchRes.status !== 404) {
+        return false;
+      }
+    } catch (err) {
+      console.warn('persistToCloud PATCH error:', err);
+      return false;
     }
-  } catch (err) {
-    console.warn('persistToCloud PATCH error:', err);
   }
 
-  // If PATCH failed (e.g. broadcast ID expired), create a new broadcast
+  // Only create a new broadcast if the targetId returned 404
   try {
     const createRes = await fetch('https://api.resend.com/broadcasts', {
       method: 'POST',
@@ -279,55 +434,39 @@ async function persistToCloud(db: CloudDatabase): Promise<boolean> {
 }
 
 /**
- * Get entire live database with in-memory caching (5s TTL).
+ * Get entire live database, merging in-memory, disk backup, and cloud store
+ * so newly posted items/houses NEVER disappear even if a cloud poll is rate-limited.
  */
 export async function getCloudDatabase(forceRefresh = false): Promise<CloudDatabase> {
   const now = Date.now();
   const cached = globalThis.__uninestLiveCloudDb;
   const ts = globalThis.__uninestLiveCloudDbTimestamp || 0;
 
-  if (!forceRefresh && cached && now - ts < 4000) {
+  if (!forceRefresh && cached && now - ts < 12000) {
     return cached;
   }
 
-  const cloudDb = await fetchFromCloud();
-  if (cloudDb) {
-    globalThis.__uninestLiveCloudDb = cloudDb;
-    globalThis.__uninestLiveCloudDbTimestamp = now;
-    writeLocalBackup(cloudDb);
-    return cloudDb;
-  }
-
   const localDb = readLocalBackup();
-  if (localDb) {
-    globalThis.__uninestLiveCloudDb = localDb;
-    globalThis.__uninestLiveCloudDbTimestamp = now;
-    return localDb;
-  }
+  const cloudDb = await fetchFromCloud();
 
-  const defaultDb: CloudDatabase = {
-    properties: [],
-    marketplace: [],
-    inquiries: [],
-    updatedAt: new Date().toISOString(),
-  };
-
-  globalThis.__uninestLiveCloudDb = defaultDb;
+  const merged = mergeDatabases(cached, localDb, cloudDb);
+  globalThis.__uninestLiveCloudDb = merged;
   globalThis.__uninestLiveCloudDbTimestamp = now;
-  return defaultDb;
+  writeLocalBackup(merged);
+  return merged;
 }
 
 /**
- * Save updated database both to in-memory cache and cloud store.
+ * Save updated database to in-memory cache, local backup, and cloud store.
  */
 export async function saveCloudDatabase(db: CloudDatabase): Promise<void> {
-  db.updatedAt = new Date().toISOString();
-  globalThis.__uninestLiveCloudDb = db;
+  const sanitized = sanitizeDb(db) || createEmptyDb();
+  sanitized.updatedAt = new Date().toISOString();
+  globalThis.__uninestLiveCloudDb = sanitized;
   globalThis.__uninestLiveCloudDbTimestamp = Date.now();
-  writeLocalBackup(db);
+  writeLocalBackup(sanitized);
 
-  // Persist to cloud asynchronously or await
-  await persistToCloud(db);
+  await persistToCloud(sanitized);
 }
 
 // ============================================================================
@@ -335,9 +474,9 @@ export async function saveCloudDatabase(db: CloudDatabase): Promise<void> {
 // ============================================================================
 
 export async function addCloudProperty(prop: CloudProperty): Promise<CloudProperty> {
-  const db = await getCloudDatabase(true);
-  // Ensure unique ID
-  const existingIndex = db.properties.findIndex((p) => p.id === prop.id);
+  const db = await getCloudDatabase(false);
+  db.deletedPropertyIds = (db.deletedPropertyIds || []).filter((id) => Number(id) !== Number(prop.id));
+  const existingIndex = db.properties.findIndex((p) => Number(p.id) === Number(prop.id));
   if (existingIndex >= 0) {
     db.properties[existingIndex] = prop;
   } else {
@@ -348,19 +487,21 @@ export async function addCloudProperty(prop: CloudProperty): Promise<CloudProper
 }
 
 export async function removeCloudProperty(id: number): Promise<boolean> {
-  const db = await getCloudDatabase(true);
+  const db = await getCloudDatabase(false);
+  const numId = Number(id);
+  const deletedSet = new Set<number>(db.deletedPropertyIds || []);
+  deletedSet.add(numId);
+  db.deletedPropertyIds = Array.from(deletedSet);
+
   const initialLen = db.properties.length;
-  db.properties = db.properties.filter((p) => p.id !== id);
-  if (db.properties.length !== initialLen) {
-    await saveCloudDatabase(db);
-    return true;
-  }
-  return false;
+  db.properties = db.properties.filter((p) => Number(p.id) !== numId);
+  await saveCloudDatabase(db);
+  return db.properties.length !== initialLen || true;
 }
 
 export async function markCloudPropertySold(id: number): Promise<boolean> {
-  const db = await getCloudDatabase(true);
-  const prop = db.properties.find((p) => p.id === id);
+  const db = await getCloudDatabase(false);
+  const prop = db.properties.find((p) => Number(p.id) === Number(id));
   if (prop) {
     prop.is_sold = true;
     await saveCloudDatabase(db);
@@ -374,9 +515,12 @@ export async function markCloudPropertySold(id: number): Promise<boolean> {
 // ============================================================================
 
 export async function addCloudMarketplaceItem(item: CloudMarketplaceItem): Promise<CloudMarketplaceItem> {
-  const db = await getCloudDatabase(true);
+  const db = await getCloudDatabase(false);
+  db.deletedMarketplaceRefs = (db.deletedMarketplaceRefs || []).filter(
+    (r) => r !== String(item.id) && r !== item.listingRef
+  );
   const existingIdx = db.marketplace.findIndex(
-    (m) => m.id === item.id || (m.listingRef && m.listingRef === item.listingRef)
+    (m) => Number(m.id) === Number(item.id) || (m.listingRef && m.listingRef === item.listingRef)
   );
   if (existingIdx >= 0) {
     db.marketplace[existingIdx] = { ...db.marketplace[existingIdx], ...item };
@@ -391,7 +535,7 @@ export async function updateCloudMarketplaceItem(
   listingRefOrId: string | number,
   patch: Partial<CloudMarketplaceItem>
 ): Promise<CloudMarketplaceItem | null> {
-  const db = await getCloudDatabase(true);
+  const db = await getCloudDatabase(false);
   const item = db.marketplace.find(
     (m) => String(m.id) === String(listingRefOrId) || m.listingRef === String(listingRefOrId)
   );
@@ -403,16 +547,26 @@ export async function updateCloudMarketplaceItem(
 }
 
 export async function removeCloudMarketplaceItem(listingRefOrId: string | number): Promise<boolean> {
-  const db = await getCloudDatabase(true);
+  const db = await getCloudDatabase(false);
+  const targetStr = String(listingRefOrId);
+  const deletedSet = new Set<string>(db.deletedMarketplaceRefs || []);
+  deletedSet.add(targetStr);
+
+  const matched = db.marketplace.find(
+    (m) => String(m.id) === targetStr || m.listingRef === targetStr
+  );
+  if (matched) {
+    deletedSet.add(String(matched.id));
+    if (matched.listingRef) deletedSet.add(matched.listingRef);
+  }
+  db.deletedMarketplaceRefs = Array.from(deletedSet);
+
   const initialLen = db.marketplace.length;
   db.marketplace = db.marketplace.filter(
-    (m) => String(m.id) !== String(listingRefOrId) && m.listingRef !== String(listingRefOrId)
+    (m) => String(m.id) !== targetStr && m.listingRef !== targetStr
   );
-  if (db.marketplace.length !== initialLen) {
-    await saveCloudDatabase(db);
-    return true;
-  }
-  return false;
+  await saveCloudDatabase(db);
+  return db.marketplace.length !== initialLen || true;
 }
 
 // ============================================================================
@@ -420,7 +574,7 @@ export async function removeCloudMarketplaceItem(listingRefOrId: string | number
 // ============================================================================
 
 export async function addCloudInquiry(inq: CloudInquiry): Promise<CloudInquiry> {
-  const db = await getCloudDatabase(true);
+  const db = await getCloudDatabase(false);
   db.inquiries.unshift(inq);
   await saveCloudDatabase(db);
   return inq;
@@ -430,7 +584,7 @@ export async function updateCloudInquiry(
   refCode: string,
   patch: Partial<CloudInquiry>
 ): Promise<CloudInquiry | null> {
-  const db = await getCloudDatabase(true);
+  const db = await getCloudDatabase(false);
   const inq = db.inquiries.find((i) => i.refCode.toUpperCase() === refCode.toUpperCase());
   if (!inq) return null;
 

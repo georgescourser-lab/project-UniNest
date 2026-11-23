@@ -14,6 +14,7 @@ import {
   removeCloudProperty,
   markCloudPropertySold as markStorePropertySold,
   CloudProperty,
+  RESET_EPOCH_ID,
 } from '@/lib/cloudStore'
 
 const SOLD_HOUSES_COOKIE = 'uninest_sold_houses_archive'
@@ -66,46 +67,57 @@ function getPostedPropertiesFilePath(): string {
 }
 
 function readStoredPostedProperties(): any[] {
-  const filePath = getPostedPropertiesFilePath()
-  try {
-    if (fs.existsSync(filePath)) {
-      const raw = fs.readFileSync(filePath, 'utf8')
-      const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed)) {
-        globalThis.__uninestPostedProperties = parsed
-        return parsed
+  const paths = [
+    path.join(os.tmpdir(), 'uninest-posted-properties.json'),
+    getPostedPropertiesFilePath(),
+  ]
+  const byId = new Map<number, any>()
+
+  for (const p of paths) {
+    try {
+      if (fs.existsSync(p)) {
+        const raw = fs.readFileSync(p, 'utf8')
+        const parsed = JSON.parse(raw)
+        if (Array.isArray(parsed)) {
+          for (const item of parsed) {
+            if (item && typeof item.id === 'number' && item.id >= RESET_EPOCH_ID) {
+              const existing = byId.get(item.id)
+              byId.set(item.id, existing ? { ...existing, ...item, is_sold: Boolean(existing.is_sold || item.is_sold) } : item)
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+
+  if (Array.isArray(globalThis.__uninestPostedProperties)) {
+    for (const item of globalThis.__uninestPostedProperties) {
+      if (item && typeof item.id === 'number' && item.id >= RESET_EPOCH_ID) {
+        const existing = byId.get(item.id)
+        byId.set(item.id, existing ? { ...existing, ...item, is_sold: Boolean(existing.is_sold || item.is_sold) } : item)
       }
     }
-  } catch {}
+  }
 
-  const tmpPath = path.join(os.tmpdir(), 'uninest-posted-properties.json')
-  try {
-    if (fs.existsSync(tmpPath)) {
-      const raw = fs.readFileSync(tmpPath, 'utf8')
-      const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed)) {
-        globalThis.__uninestPostedProperties = parsed
-        return parsed
-      }
-    }
-  } catch {}
-
-  return Array.isArray(globalThis.__uninestPostedProperties)
-    ? globalThis.__uninestPostedProperties
-    : []
+  const merged = Array.from(byId.values()).sort((a, b) => Number(b.id) - Number(a.id))
+  globalThis.__uninestPostedProperties = merged
+  return merged
 }
 
 function writeStoredPostedProperties(list: any[]) {
-  globalThis.__uninestPostedProperties = list
-  const filePath = getPostedPropertiesFilePath()
+  const cleanList = (list || []).filter((p) => p && typeof p.id === 'number' && p.id >= RESET_EPOCH_ID)
+  globalThis.__uninestPostedProperties = cleanList
+  const payload = JSON.stringify(cleanList, null, 2)
+
   try {
-    fs.writeFileSync(filePath, JSON.stringify(list, null, 2), 'utf8')
-  } catch {
-    try {
-      const tmpPath = path.join(os.tmpdir(), 'uninest-posted-properties.json')
-      fs.writeFileSync(tmpPath, JSON.stringify(list, null, 2), 'utf8')
-    } catch {}
-  }
+    const tmpPath = path.join(os.tmpdir(), 'uninest-posted-properties.json')
+    fs.writeFileSync(tmpPath, payload, 'utf8')
+  } catch {}
+
+  try {
+    const filePath = getPostedPropertiesFilePath()
+    fs.writeFileSync(filePath, payload, 'utf8')
+  } catch {}
 }
 
 async function saveUploadedFileLocallyOrDataUrl(file: File, prefix = 'img'): Promise<string> {
@@ -199,9 +211,17 @@ export async function getAllProperties(filters?: {
   location?: string
 }) {
   let cloudProperties: any[] = []
+  const deletedOrSoldIds = new Set<number>()
   try {
     const db = await getCloudDatabase()
-    cloudProperties = (db.properties || []).filter((p) => !p.is_sold)
+    ;(db.deletedPropertyIds || []).forEach((id) => deletedOrSoldIds.add(Number(id)))
+    for (const p of db.properties || []) {
+      if (p.is_sold) {
+        deletedOrSoldIds.add(Number(p.id))
+      } else if (Number(p.id) >= RESET_EPOCH_ID && !deletedOrSoldIds.has(Number(p.id))) {
+        cloudProperties.push(p)
+      }
+    }
   } catch {}
 
   let dbProperties: any[] = []
@@ -212,11 +232,17 @@ export async function getAllProperties(filters?: {
       .select('*, agents(*)')
       .order('id', { ascending: false })
     if (Array.isArray(data)) {
-      dbProperties = data
+      dbProperties = data.filter((p) => Number(p.id) >= RESET_EPOCH_ID && !p.is_sold && !deletedOrSoldIds.has(Number(p.id)))
     }
   } catch {}
 
-  const localProperties = readStoredPostedProperties()
+  const localProperties = readStoredPostedProperties().filter((p) => {
+    if (p.is_sold) {
+      deletedOrSoldIds.add(Number(p.id))
+      return false
+    }
+    return Number(p.id) >= RESET_EPOCH_ID && !deletedOrSoldIds.has(Number(p.id))
+  })
 
   // Also check cookie metadata fallback in case a serverless instance cold-started
   let cookieProperties: any[] = []
@@ -226,7 +252,9 @@ export async function getAllProperties(filters?: {
     if (rawCookie) {
       const parsed = JSON.parse(decodeURIComponent(rawCookie))
       if (Array.isArray(parsed)) {
-        cookieProperties = parsed
+        cookieProperties = parsed.filter(
+          (p: any) => p && Number(p.id) >= RESET_EPOCH_ID && !p.is_sold && !deletedOrSoldIds.has(Number(p.id))
+        )
       }
     }
   } catch {}
@@ -306,8 +334,12 @@ export async function getAllProperties(filters?: {
 }
 
 export async function getPropertyById(propertyId: number) {
+  if (!propertyId || Number(propertyId) < RESET_EPOCH_ID) return null
+  const deletedIds = new Set<number>()
   try {
     const db = await getCloudDatabase()
+    ;(db.deletedPropertyIds || []).forEach((id) => deletedIds.add(Number(id)))
+    if (deletedIds.has(Number(propertyId))) return null
     const foundCloud = (db.properties || []).find((p) => Number(p.id) === Number(propertyId))
     if (foundCloud) {
       return {
@@ -719,6 +751,31 @@ export async function markPropertyAsSold(propertyId: number) {
   try {
     // 1. Mark as sold in shared cloud store
     await markStorePropertySold(propertyId)
+
+    // 1b. Also mark as sold in local posted properties store and remove from active POSTED_HOUSES_COOKIE
+    const existingLocal = readStoredPostedProperties()
+    const updatedLocal = existingLocal.map((p) =>
+      Number(p.id) === Number(propertyId) ? { ...p, is_sold: true } : p
+    )
+    writeStoredPostedProperties(updatedLocal)
+
+    try {
+      const cookieStore = await cookies()
+      const rawPosted = cookieStore.get(POSTED_HOUSES_COOKIE)?.value
+      if (rawPosted) {
+        const parsedPosted = JSON.parse(decodeURIComponent(rawPosted))
+        if (Array.isArray(parsedPosted)) {
+          const nextPosted = parsedPosted.filter((p: any) => Number(p.id) !== Number(propertyId))
+          cookieStore.set(POSTED_HOUSES_COOKIE, encodeURIComponent(JSON.stringify(nextPosted)), {
+            httpOnly: false,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            path: '/',
+            maxAge: THIRTY_DAYS,
+          })
+        }
+      }
+    } catch {}
 
     const targetProp = await getPropertyById(propertyId)
 
