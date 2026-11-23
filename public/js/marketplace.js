@@ -11,8 +11,8 @@
   const STORAGE_KEY_PENDING_SUBMISSIONS = 'uninest_pending_verification_submissions';
   const STORAGE_KEY_INQUIRIES = 'uninest_agent_inquiries';
   const STORAGE_KEY_DELETED_REFS = 'uninest_deleted_marketplace_refs';
-  const CLEAN_SLATE_VERSION = 'uninest_clean_slate_v3_20261124';
-  const RESET_EPOCH_ID = 1795468000000;
+  const CLEAN_SLATE_VERSION = 'uninest_clean_slate_v4_20261124';
+  const RESET_EPOCH_ID = 1795469500000;
 
   const SEED_SUBMISSION_IDS = new Set([991, 992, 1, 2, 3, 4, 5, 6, 7, 8, 8001, 9001]);
   const SEED_SUBMISSION_REFS = new Set(['UN-VET-7821', 'UN-VET-8430', 'UN-VET-8001', 'UN-MKT-101', 'UN-MKT-102', 'UN-MKT-103', 'UN-MKT-104', 'UN-MKT-105', 'UN-MKT-106', 'UN-MKT-107', 'UN-MKT-108']);
@@ -858,10 +858,19 @@
     };
     const assignedAgent = campusAgents[campus] || { id: 1, name: 'George Scourser' };
 
-    // Intake submission record stored in the Agent's Vetting Queue
+    const activeUser = window.UniAuth ? window.UniAuth.getUser() : null;
+    const isPosterAgent =
+      !!getCurrentVerifiedAgent() ||
+      (ownerEmail &&
+        ['georgescourser@gmail.com', 'oderocarilus@gmail.com'].includes(
+          ownerEmail.trim().toLowerCase()
+        ));
+    const initialStatus = isPosterAgent ? 'Live' : 'Pending Agent Verification';
+
+    // Intake submission record (automatically Live when posted by a verified agent)
     const pendingSubmission = {
       id: itemId,
-      listingRef,
+      listingRef: isPosterAgent ? `UN-MKT-${Math.floor(1000 + Math.random() * 9000)}` : listingRef,
       title,
       category,
       price: `Ksh ${parseInt(priceNum).toLocaleString()}`,
@@ -875,18 +884,22 @@
       verificationMethod,
       ownerLegalName,
       ownerPhone,
-      ownerEmail,
+      ownerEmail: ownerEmail || (activeUser && activeUser.email) || '',
       ownerPrivateAddress,
       assignedAgentId: assignedAgent.id,
       assignedAgentName: assignedAgent.name,
       submittedAt: new Date().toISOString(),
-      status: 'Pending Agent Verification'
+      status: initialStatus,
+      verifiedListing: isPosterAgent
     };
 
     // Persist to central cloud database across all devices
     fetch('/api/marketplace', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-uninest-agent-email': (activeUser && activeUser.email) || ownerEmail || '',
+      },
       body: JSON.stringify(pendingSubmission),
     })
       .then(function(res) {
@@ -898,24 +911,51 @@
         });
       })
       .then(function(cloudRes) {
-        try {
-          const stored = localStorage.getItem(STORAGE_KEY_PENDING_SUBMISSIONS);
-          const list = stored ? JSON.parse(stored) : [];
-          list.unshift(cloudRes.item);
-          localStorage.setItem(STORAGE_KEY_PENDING_SUBMISSIONS, JSON.stringify(list));
-        } catch (storageError) {
-          console.error('Error saving pending submission locally:', storageError);
+        const savedItem = cloudRes.item;
+        const isLiveNow = savedItem.status === 'Live';
+
+        if (isLiveNow) {
+          serverMarketplaceItems = [
+            savedItem,
+            ...(serverMarketplaceItems || []).filter(i => i.listingRef !== savedItem.listingRef && i.id != savedItem.id)
+          ];
+          try {
+            const storedPub = localStorage.getItem(STORAGE_KEY_PUBLIC);
+            const pubList = storedPub ? JSON.parse(storedPub) : [];
+            const filteredPub = pubList.filter(i => i.listingRef !== savedItem.listingRef && i.id != savedItem.id);
+            filteredPub.unshift(savedItem);
+            localStorage.setItem(STORAGE_KEY_PUBLIC, JSON.stringify(filteredPub));
+          } catch (storageError) {
+            console.error('Error saving public item locally:', storageError);
+          }
+        } else {
+          try {
+            const stored = localStorage.getItem(STORAGE_KEY_PENDING_SUBMISSIONS);
+            const list = stored ? JSON.parse(stored) : [];
+            list.unshift(savedItem);
+            localStorage.setItem(STORAGE_KEY_PENDING_SUBMISSIONS, JSON.stringify(list));
+          } catch (storageError) {
+            console.error('Error saving pending submission locally:', storageError);
+          }
         }
+
         syncMarketplaceFromServer();
+        initMarketplacePage();
+        initHomepageMarketplace();
         form.reset();
         closePostModal();
-        alert(
-          `✓ Item Submitted to Agent Verification Queue!\n\n` +
-          `Verification Ticket: ${cloudRes.listingRef || listingRef}\n` +
-          `Assigned Agent: ${assignedAgent.name}\n` +
-          `Verification Method: ${verificationMethod}\n\n` +
-          `Your item is currently pending verification. Your assigned agent will contact you to conduct the physical inspection before publishing it live on the marketplace. Your contact details remain confidential.`
-        );
+
+        if (isLiveNow) {
+          showToast(`✓ Item "${savedItem.title}" (${savedItem.listingRef}) is now LIVE on the marketplace across all accounts!`);
+        } else {
+          alert(
+            `✓ Item Submitted to Agent Verification Queue!\n\n` +
+            `Verification Ticket: ${cloudRes.listingRef || listingRef}\n` +
+            `Assigned Agent: ${assignedAgent.name}\n` +
+            `Verification Method: ${verificationMethod}\n\n` +
+            `Your item is currently pending verification. Your assigned agent will contact you to conduct the physical inspection before publishing it live on the marketplace. Your contact details remain confidential.`
+          );
+        }
       })
       .catch(function(err) {
         console.error('Marketplace submission failed:', err);
@@ -2503,6 +2543,7 @@
   // Global namespace export
   window.UniMarketplace = {
     getAllItems,
+    syncMarketplaceFromServer,
     initHomepageMarketplace,
     initMarketplacePage,
     openQuickView,

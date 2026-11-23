@@ -2,7 +2,9 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
-export const RESET_EPOCH_ID = 1795468000000;
+export const RESET_EPOCH_ID = 1795469500000;
+const SYSTEM_STATE_ROW_ID = 1;
+const SYSTEM_STATE_REF = '__UNINEST_CLOUD_STATE__';
 
 export interface CloudProperty {
   id: number;
@@ -82,6 +84,56 @@ const STORE_BROADCAST_ID = '52b03fe2-60c7-497b-a552-7854c8bb11c1';
 const STORE_BROADCAST_NAME = 'uninest_live_cloud_store_v1';
 const AUDIENCE_ID = '55c809d4-043e-4917-bc4d-479d5e2f9dd0';
 
+declare global {
+  // eslint-disable-next-line no-var
+  var __uninestLiveCloudDb: CloudDatabase | undefined;
+  // eslint-disable-next-line no-var
+  var __uninestLiveCloudDbTimestamp: number | undefined;
+  // eslint-disable-next-line no-var
+  var __uninestStoreBroadcastId: string | undefined;
+  // eslint-disable-next-line no-var
+  var __uninestInFlightCloudFetch: Promise<CloudDatabase | null> | undefined;
+  // eslint-disable-next-line no-var
+  var __uninestPgPool: any;
+  // eslint-disable-next-line no-var
+  var __uninestPgPoolFailedAt: number | undefined;
+  // eslint-disable-next-line no-var
+  var __uninestPgEpochCleaned: boolean | undefined;
+}
+
+/**
+ * Dynamically loads `pg.Pool` at runtime without static import so Next.js 16
+ * Turbopack on Windows/OneDrive never creates a broken NTFS junction point,
+ * while Vercel serverless functions use `process.env.DATABASE_URL` natively.
+ */
+function getPgPool(): any {
+  if (!process.env.DATABASE_URL) return null;
+  if (
+    globalThis.__uninestPgPoolFailedAt &&
+    Date.now() - globalThis.__uninestPgPoolFailedAt < 60000
+  ) {
+    return null;
+  }
+  if (!globalThis.__uninestPgPool) {
+    try {
+      const dynamicRequire = eval('require');
+      const pgMod = dynamicRequire('pg');
+      const PoolClass = pgMod?.Pool || pgMod?.default?.Pool;
+      if (!PoolClass) return null;
+      globalThis.__uninestPgPool = new PoolClass({
+        connectionString: process.env.DATABASE_URL,
+        max: 3,
+        idleTimeoutMillis: 15000,
+        connectionTimeoutMillis: 2000,
+      });
+    } catch {
+      globalThis.__uninestPgPoolFailedAt = Date.now();
+      return null;
+    }
+  }
+  return globalThis.__uninestPgPool;
+}
+
 function getResendKey(): string {
   const fromEnv = (
     process.env.RESEND_API_KEY ||
@@ -119,17 +171,6 @@ function getResendKey(): string {
   return '';
 }
 
-declare global {
-  // eslint-disable-next-line no-var
-  var __uninestLiveCloudDb: CloudDatabase | undefined;
-  // eslint-disable-next-line no-var
-  var __uninestLiveCloudDbTimestamp: number | undefined;
-  // eslint-disable-next-line no-var
-  var __uninestStoreBroadcastId: string | undefined;
-  // eslint-disable-next-line no-var
-  var __uninestInFlightCloudFetch: Promise<CloudDatabase | null> | undefined;
-}
-
 function createEmptyDb(): CloudDatabase {
   return {
     properties: [],
@@ -142,10 +183,29 @@ function createEmptyDb(): CloudDatabase {
   };
 }
 
+function splitMarketplaceItem(item: CloudMarketplaceItem) {
+  const {
+    ownerLegalName,
+    ownerPhone,
+    ownerEmail,
+    ownerPrivateAddress,
+    ...publicData
+  } = item;
+
+  return {
+    publicData,
+    privateData: {
+      ownerLegalName: ownerLegalName || '',
+      ownerPhone: ownerPhone || '',
+      ownerEmail: ownerEmail || '',
+      ownerPrivateAddress: ownerPrivateAddress || '',
+    },
+  };
+}
+
 function sanitizeDb(raw: any): CloudDatabase | null {
   if (!raw || typeof raw !== 'object') return null;
 
-  // Reject any pre-reset snapshot that still contains legacy placeholder IDs (< RESET_EPOCH_ID)
   const deletedPropIds = new Set<number>(
     Array.isArray(raw.deletedPropertyIds)
       ? raw.deletedPropertyIds.map((id: any) => Number(id)).filter((n: number) => !isNaN(n))
@@ -203,7 +263,6 @@ function mergeDatabases(...sources: (CloudDatabase | null | undefined)[]): Cloud
     (src.deletedMarketplaceRefs || []).forEach((ref) => deletedMktRefs.add(String(ref)));
   }
 
-  // Merge properties by id (earlier sources in `valid` take priority if newer, so order sources newest-first)
   const sortedSources = [...valid].sort((a, b) => {
     const tA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
     const tB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
@@ -219,7 +278,6 @@ function mergeDatabases(...sources: (CloudDatabase | null | undefined)[]): Cloud
       if (!existing) {
         propMap.set(id, p);
       } else {
-        // Preserve images and sold status
         const bestImages =
           Array.isArray(existing.images) && existing.images.length > 0
             ? existing.images
@@ -260,6 +318,19 @@ function mergeDatabases(...sources: (CloudDatabase | null | undefined)[]): Cloud
         const rankExisting = statusRank[existing.status] || 0;
         const rankIncoming = statusRank[m.status] || 0;
         const winner = rankIncoming > rankExisting ? { ...existing, ...m } : { ...m, ...existing };
+        // Preserve private seller fields if present on either copy
+        if (!winner.ownerPhone && (existing.ownerPhone || m.ownerPhone)) {
+          winner.ownerPhone = existing.ownerPhone || m.ownerPhone;
+        }
+        if (!winner.ownerLegalName && (existing.ownerLegalName || m.ownerLegalName)) {
+          winner.ownerLegalName = existing.ownerLegalName || m.ownerLegalName;
+        }
+        if (!winner.ownerEmail && (existing.ownerEmail || m.ownerEmail)) {
+          winner.ownerEmail = existing.ownerEmail || m.ownerEmail;
+        }
+        if (!winner.ownerPrivateAddress && (existing.ownerPrivateAddress || m.ownerPrivateAddress)) {
+          winner.ownerPrivateAddress = existing.ownerPrivateAddress || m.ownerPrivateAddress;
+        }
         mktMap.set(refKey, winner);
       }
     }
@@ -287,6 +358,212 @@ function mergeDatabases(...sources: (CloudDatabase | null | undefined)[]): Cloud
   };
 }
 
+// ============================================================================
+// 1. Supabase PostgreSQL Direct Pool + Supabase HTTPS REST Reader
+// ============================================================================
+
+async function readFromPostgresOrRest(): Promise<CloudDatabase | null> {
+  const pool = getPgPool();
+  if (pool) {
+    try {
+      if (!globalThis.__uninestPgEpochCleaned) {
+        globalThis.__uninestPgEpochCleaned = true;
+        await pool
+          .query(
+            `DELETE FROM public.marketplace_items WHERE id < $1 AND id <> $2`,
+            [RESET_EPOCH_ID, SYSTEM_STATE_ROW_ID]
+          )
+          .catch(() => {});
+      }
+
+      const result = await pool.query(
+        `SELECT id, listing_ref, status, data, private_data, updated_at
+           FROM public.marketplace_items
+          ORDER BY updated_at DESC, created_at DESC`
+      );
+
+      let systemState: any = null;
+      const items: CloudMarketplaceItem[] = [];
+
+      for (const row of result.rows) {
+        const numId = Number(row.id);
+        if (numId === SYSTEM_STATE_ROW_ID || row.listing_ref === SYSTEM_STATE_REF) {
+          if (row.data && Number(row.data.resetEpoch) >= RESET_EPOCH_ID) {
+            systemState = row.data;
+          }
+          continue;
+        }
+        if (numId < RESET_EPOCH_ID) continue;
+        items.push({
+          ...row.data,
+          ...row.private_data,
+          id: numId,
+          listingRef: row.listing_ref,
+          status: row.status,
+        });
+      }
+
+      return sanitizeDb({
+        properties: Array.isArray(systemState?.properties) ? systemState.properties : [],
+        marketplace: items,
+        inquiries: Array.isArray(systemState?.inquiries) ? systemState.inquiries : [],
+        deletedPropertyIds: Array.isArray(systemState?.deletedPropertyIds)
+          ? systemState.deletedPropertyIds
+          : [],
+        deletedMarketplaceRefs: Array.isArray(systemState?.deletedMarketplaceRefs)
+          ? systemState.deletedMarketplaceRefs
+          : [],
+        resetEpoch: RESET_EPOCH_ID,
+        updatedAt: systemState?.updatedAt || new Date().toISOString(),
+      });
+    } catch (err) {
+      globalThis.__uninestPgPoolFailedAt = Date.now();
+      console.warn('Postgres pool read notice (falling back to HTTPS REST):', (err as any)?.message);
+    }
+  }
+
+  // Fallback: Read granted columns from public.marketplace_items over Supabase HTTPS REST API
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (supabaseUrl && supabaseKey) {
+    try {
+      const restRes = await fetch(
+        `${supabaseUrl}/rest/v1/marketplace_items?select=id,listing_ref,status,data,updated_at&order=updated_at.desc`,
+        {
+          headers: {
+            apikey: supabaseKey,
+            Authorization: `Bearer ${supabaseKey}`,
+          },
+          cache: 'no-store',
+        }
+      );
+      if (restRes.ok) {
+        const rows = await restRes.json();
+        if (Array.isArray(rows)) {
+          let systemState: any = null;
+          const items: CloudMarketplaceItem[] = [];
+          for (const row of rows) {
+            const numId = Number(row.id);
+            if (numId === SYSTEM_STATE_ROW_ID || row.listing_ref === SYSTEM_STATE_REF) {
+              if (row.data && Number(row.data.resetEpoch) >= RESET_EPOCH_ID) {
+                systemState = row.data;
+              }
+              continue;
+            }
+            if (numId < RESET_EPOCH_ID) continue;
+            items.push({
+              ...row.data,
+              id: numId,
+              listingRef: row.listing_ref,
+              status: row.status,
+            });
+          }
+          if (systemState || items.length > 0) {
+            return sanitizeDb({
+              properties: Array.isArray(systemState?.properties) ? systemState.properties : [],
+              marketplace: items,
+              inquiries: Array.isArray(systemState?.inquiries) ? systemState.inquiries : [],
+              deletedPropertyIds: Array.isArray(systemState?.deletedPropertyIds)
+                ? systemState.deletedPropertyIds
+                : [],
+              deletedMarketplaceRefs: Array.isArray(systemState?.deletedMarketplaceRefs)
+                ? systemState.deletedMarketplaceRefs
+                : [],
+              resetEpoch: RESET_EPOCH_ID,
+              updatedAt: systemState?.updatedAt || new Date().toISOString(),
+            });
+          }
+        }
+      }
+    } catch {}
+  }
+
+  return null;
+}
+
+async function writeToPostgres(db: CloudDatabase): Promise<boolean> {
+  const pool = getPgPool();
+  if (!pool) return false;
+
+  try {
+    // 1. Upsert the system state row (properties, inquiries, tombstones)
+    const statePayload = {
+      properties: db.properties || [],
+      inquiries: db.inquiries || [],
+      deletedPropertyIds: db.deletedPropertyIds || [],
+      deletedMarketplaceRefs: db.deletedMarketplaceRefs || [],
+      resetEpoch: RESET_EPOCH_ID,
+      updatedAt: db.updatedAt || new Date().toISOString(),
+    };
+
+    await pool.query(
+      `INSERT INTO public.marketplace_items (id, listing_ref, status, data, private_data, updated_at)
+       VALUES ($1, $2, 'System', $3::jsonb, '{}'::jsonb, now())
+       ON CONFLICT (listing_ref) DO UPDATE SET
+         id = EXCLUDED.id,
+         status = EXCLUDED.status,
+         data = EXCLUDED.data,
+         updated_at = now()`,
+      [SYSTEM_STATE_ROW_ID, SYSTEM_STATE_REF, JSON.stringify(statePayload)]
+    );
+
+    // 2. Delete any tombstoned or pre-epoch marketplace items
+    await pool.query(
+      `DELETE FROM public.marketplace_items WHERE id < $1 AND id <> $2`,
+      [RESET_EPOCH_ID, SYSTEM_STATE_ROW_ID]
+    );
+
+    if (db.deletedMarketplaceRefs && db.deletedMarketplaceRefs.length > 0) {
+      await pool.query(
+        `DELETE FROM public.marketplace_items
+          WHERE (id::text = ANY($1::text[]) OR listing_ref = ANY($1::text[]))
+            AND id <> $2`,
+        [db.deletedMarketplaceRefs, SYSTEM_STATE_ROW_ID]
+      );
+    }
+
+    // 3. Upsert all current marketplace items
+    for (const item of db.marketplace || []) {
+      if (Number(item.id) < RESET_EPOCH_ID) continue;
+      const { publicData, privateData } = splitMarketplaceItem(item);
+      await pool.query(
+        `INSERT INTO public.marketplace_items (id, listing_ref, status, data, private_data, updated_at)
+         VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, now())
+         ON CONFLICT (listing_ref) DO UPDATE SET
+           id = EXCLUDED.id,
+           status = EXCLUDED.status,
+           data = EXCLUDED.data,
+           private_data = CASE
+             WHEN EXCLUDED.private_data = '{}'::jsonb OR EXCLUDED.private_data->>'ownerPhone' = ''
+             THEN public.marketplace_items.private_data
+             ELSE EXCLUDED.private_data
+           END,
+           updated_at = now()`,
+        [
+          item.id,
+          item.listingRef,
+          item.status,
+          JSON.stringify(publicData),
+          JSON.stringify(privateData),
+        ]
+      );
+    }
+
+    return true;
+  } catch (err) {
+    globalThis.__uninestPgPoolFailedAt = Date.now();
+    console.warn('Postgres pool write notice:', (err as any)?.message);
+    return false;
+  }
+}
+
+// ============================================================================
+// 2. Local File Backup & Resend Broadcast Cloud Fallback
+// ============================================================================
+
 function readLocalBackup(): CloudDatabase | null {
   const candidates: CloudDatabase[] = [];
   const paths = [
@@ -311,13 +588,11 @@ function readLocalBackup(): CloudDatabase | null {
 function writeLocalBackup(db: CloudDatabase) {
   const payload = JSON.stringify(db, null, 2);
 
-  // 1. Always write to OS tmpdir (writable on both Vercel serverless & local dev)
   try {
     const tmpPath = path.join(os.tmpdir(), 'uninest-cloud-database.json');
     fs.writeFileSync(tmpPath, payload, 'utf8');
   } catch {}
 
-  // 2. Also write to workspace data/cloud-database.json when writable
   try {
     const dataDir = path.join(process.cwd(), 'data');
     if (!fs.existsSync(dataDir)) {
@@ -327,47 +602,28 @@ function writeLocalBackup(db: CloudDatabase) {
   } catch {}
 }
 
-async function fetchFromCloud(): Promise<CloudDatabase | null> {
+async function fetchFromResendBroadcast(): Promise<CloudDatabase | null> {
   const key = getResendKey();
   if (!key) return null;
 
-  if (globalThis.__uninestInFlightCloudFetch) {
-    return globalThis.__uninestInFlightCloudFetch;
-  }
-
-  const doFetch = async (): Promise<CloudDatabase | null> => {
-    const targetId = globalThis.__uninestStoreBroadcastId || STORE_BROADCAST_ID;
-
-    try {
-      const res = await fetch(`https://api.resend.com/broadcasts/${targetId}`, {
-        headers: { Authorization: `Bearer ${key}` },
-        cache: 'no-store',
-      });
-      if (res.ok) {
-        const doc = await res.json();
-        if (doc?.text) {
-          const parsed = sanitizeDb(JSON.parse(doc.text));
-          if (parsed) return parsed;
-        }
-      } else if (res.status === 429) {
-        // Rate limited by Resend (2 req/s) — do not overwrite local cache
-        return null;
+  const targetId = globalThis.__uninestStoreBroadcastId || STORE_BROADCAST_ID;
+  try {
+    const res = await fetch(`https://api.resend.com/broadcasts/${targetId}`, {
+      headers: { Authorization: `Bearer ${key}` },
+      cache: 'no-store',
+    });
+    if (res.ok) {
+      const doc = await res.json();
+      if (doc?.text) {
+        return sanitizeDb(JSON.parse(doc.text));
       }
-    } catch (err) {
-      console.warn('fetchFromCloud error:', err);
     }
+  } catch {}
 
-    return null;
-  };
-
-  globalThis.__uninestInFlightCloudFetch = doFetch().finally(() => {
-    globalThis.__uninestInFlightCloudFetch = undefined;
-  });
-
-  return globalThis.__uninestInFlightCloudFetch;
+  return null;
 }
 
-async function persistToCloud(db: CloudDatabase): Promise<boolean> {
+async function persistToResendBroadcast(db: CloudDatabase): Promise<boolean> {
   const key = getResendKey();
   if (!key) return false;
 
@@ -382,27 +638,19 @@ async function persistToCloud(db: CloudDatabase): Promise<boolean> {
           Authorization: `Bearer ${key}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          text: payload,
-        }),
+        body: JSON.stringify({ text: payload }),
       });
-      if (patchRes.ok) {
-        return true;
-      }
+      if (patchRes.ok) return true;
       if (patchRes.status === 429 && attempt === 0) {
         await new Promise((r) => setTimeout(r, 1100));
         continue;
       }
-      if (patchRes.status !== 404) {
-        return false;
-      }
-    } catch (err) {
-      console.warn('persistToCloud PATCH error:', err);
+      if (patchRes.status !== 404) return false;
+    } catch {
       return false;
     }
   }
 
-  // Only create a new broadcast if the targetId returned 404
   try {
     const createRes = await fetch('https://api.resend.com/broadcasts', {
       method: 'POST',
@@ -426,28 +674,46 @@ async function persistToCloud(db: CloudDatabase): Promise<boolean> {
         return true;
       }
     }
-  } catch (err) {
-    console.warn('persistToCloud create error:', err);
-  }
+  } catch {}
 
   return false;
 }
 
+async function fetchFromAllCloudBackends(): Promise<CloudDatabase | null> {
+  if (globalThis.__uninestInFlightCloudFetch) {
+    return globalThis.__uninestInFlightCloudFetch;
+  }
+
+  const doFetch = async (): Promise<CloudDatabase | null> => {
+    const [pgOrRestDb, resendDb] = await Promise.all([
+      readFromPostgresOrRest(),
+      fetchFromResendBroadcast(),
+    ]);
+    if (!pgOrRestDb && !resendDb) return null;
+    return mergeDatabases(pgOrRestDb, resendDb);
+  };
+
+  globalThis.__uninestInFlightCloudFetch = doFetch().finally(() => {
+    globalThis.__uninestInFlightCloudFetch = undefined;
+  });
+
+  return globalThis.__uninestInFlightCloudFetch;
+}
+
 /**
- * Get entire live database, merging in-memory, disk backup, and cloud store
- * so newly posted items/houses NEVER disappear even if a cloud poll is rate-limited.
+ * Get entire live database, merging in-memory, disk backup, Supabase Postgres, and Resend Cloud Store.
  */
 export async function getCloudDatabase(forceRefresh = false): Promise<CloudDatabase> {
   const now = Date.now();
   const cached = globalThis.__uninestLiveCloudDb;
   const ts = globalThis.__uninestLiveCloudDbTimestamp || 0;
 
-  if (!forceRefresh && cached && now - ts < 12000) {
+  if (!forceRefresh && cached && now - ts < 5000) {
     return cached;
   }
 
   const localDb = readLocalBackup();
-  const cloudDb = await fetchFromCloud();
+  const cloudDb = await fetchFromAllCloudBackends();
 
   const merged = mergeDatabases(cached, localDb, cloudDb);
   globalThis.__uninestLiveCloudDb = merged;
@@ -457,7 +723,7 @@ export async function getCloudDatabase(forceRefresh = false): Promise<CloudDatab
 }
 
 /**
- * Save updated database to in-memory cache, local backup, and cloud store.
+ * Save updated database to in-memory cache, local backup, Supabase Postgres, and Resend Cloud Store.
  */
 export async function saveCloudDatabase(db: CloudDatabase): Promise<void> {
   const sanitized = sanitizeDb(db) || createEmptyDb();
@@ -466,7 +732,10 @@ export async function saveCloudDatabase(db: CloudDatabase): Promise<void> {
   globalThis.__uninestLiveCloudDbTimestamp = Date.now();
   writeLocalBackup(sanitized);
 
-  await persistToCloud(sanitized);
+  await Promise.all([
+    writeToPostgres(sanitized),
+    persistToResendBroadcast(sanitized),
+  ]);
 }
 
 // ============================================================================
@@ -474,7 +743,7 @@ export async function saveCloudDatabase(db: CloudDatabase): Promise<void> {
 // ============================================================================
 
 export async function addCloudProperty(prop: CloudProperty): Promise<CloudProperty> {
-  const db = await getCloudDatabase(false);
+  const db = await getCloudDatabase(true);
   db.deletedPropertyIds = (db.deletedPropertyIds || []).filter((id) => Number(id) !== Number(prop.id));
   const existingIndex = db.properties.findIndex((p) => Number(p.id) === Number(prop.id));
   if (existingIndex >= 0) {
@@ -487,7 +756,7 @@ export async function addCloudProperty(prop: CloudProperty): Promise<CloudProper
 }
 
 export async function removeCloudProperty(id: number): Promise<boolean> {
-  const db = await getCloudDatabase(false);
+  const db = await getCloudDatabase(true);
   const numId = Number(id);
   const deletedSet = new Set<number>(db.deletedPropertyIds || []);
   deletedSet.add(numId);
@@ -500,7 +769,7 @@ export async function removeCloudProperty(id: number): Promise<boolean> {
 }
 
 export async function markCloudPropertySold(id: number): Promise<boolean> {
-  const db = await getCloudDatabase(false);
+  const db = await getCloudDatabase(true);
   const prop = db.properties.find((p) => Number(p.id) === Number(id));
   if (prop) {
     prop.is_sold = true;
@@ -515,7 +784,7 @@ export async function markCloudPropertySold(id: number): Promise<boolean> {
 // ============================================================================
 
 export async function addCloudMarketplaceItem(item: CloudMarketplaceItem): Promise<CloudMarketplaceItem> {
-  const db = await getCloudDatabase(false);
+  const db = await getCloudDatabase(true);
   db.deletedMarketplaceRefs = (db.deletedMarketplaceRefs || []).filter(
     (r) => r !== String(item.id) && r !== item.listingRef
   );
@@ -535,7 +804,7 @@ export async function updateCloudMarketplaceItem(
   listingRefOrId: string | number,
   patch: Partial<CloudMarketplaceItem>
 ): Promise<CloudMarketplaceItem | null> {
-  const db = await getCloudDatabase(false);
+  const db = await getCloudDatabase(true);
   const item = db.marketplace.find(
     (m) => String(m.id) === String(listingRefOrId) || m.listingRef === String(listingRefOrId)
   );
@@ -547,7 +816,7 @@ export async function updateCloudMarketplaceItem(
 }
 
 export async function removeCloudMarketplaceItem(listingRefOrId: string | number): Promise<boolean> {
-  const db = await getCloudDatabase(false);
+  const db = await getCloudDatabase(true);
   const targetStr = String(listingRefOrId);
   const deletedSet = new Set<string>(db.deletedMarketplaceRefs || []);
   deletedSet.add(targetStr);
@@ -574,7 +843,7 @@ export async function removeCloudMarketplaceItem(listingRefOrId: string | number
 // ============================================================================
 
 export async function addCloudInquiry(inq: CloudInquiry): Promise<CloudInquiry> {
-  const db = await getCloudDatabase(false);
+  const db = await getCloudDatabase(true);
   db.inquiries.unshift(inq);
   await saveCloudDatabase(db);
   return inq;
@@ -584,7 +853,7 @@ export async function updateCloudInquiry(
   refCode: string,
   patch: Partial<CloudInquiry>
 ): Promise<CloudInquiry | null> {
-  const db = await getCloudDatabase(false);
+  const db = await getCloudDatabase(true);
   const inq = db.inquiries.find((i) => i.refCode.toUpperCase() === refCode.toUpperCase());
   if (!inq) return null;
 

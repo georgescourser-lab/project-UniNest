@@ -171,6 +171,17 @@ export async function POST(req: NextRequest) {
 
     const assignedAgent = campusAgents[body.campus] || { id: 1, name: 'George Scourser' };
 
+    // Check if the poster is a verified agent (via session, cookie, header, or ownerEmail)
+    const user = await getCurrentUser().catch(() => null);
+    const callerEmail = resolveRequestEmail(req, user?.email || body.ownerEmail);
+    const isPosterVerifiedAgent =
+      VERIFIED_AGENT_EMAILS.includes(callerEmail) ||
+      VERIFIED_AGENT_EMAILS.includes(String(body.ownerEmail || '').trim().toLowerCase());
+
+    const resolvedStatus = isPosterVerifiedAgent
+      ? 'Live'
+      : body.status || 'Pending Agent Verification';
+
     const newItem: CloudMarketplaceItem = {
       id: itemId,
       listingRef,
@@ -191,13 +202,13 @@ export async function POST(req: NextRequest) {
       verificationMethod: body.verificationMethod || 'Hostel Visit',
       ownerLegalName: body.ownerLegalName || 'Confidential Student',
       ownerPhone: body.ownerPhone || '',
-      ownerEmail: body.ownerEmail || '',
+      ownerEmail: body.ownerEmail || callerEmail || '',
       ownerPrivateAddress: body.ownerPrivateAddress || '',
       assignedAgentId: assignedAgent.id,
       assignedAgentName: assignedAgent.name,
       submittedAt: new Date().toISOString(),
-      status: body.status || 'Pending Agent Verification',
-      verifiedListing: body.status === 'Live',
+      status: resolvedStatus,
+      verifiedListing: resolvedStatus === 'Live',
       postedAt: body.postedAt || 'Just now',
     };
 

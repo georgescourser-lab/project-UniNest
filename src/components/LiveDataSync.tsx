@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-const CLEAN_SLATE_VERSION = "uninest_clean_slate_v3_20261124";
+const CLEAN_SLATE_VERSION = "uninest_clean_slate_v4_20261124";
 
 export default function LiveDataSync() {
   const router = useRouter();

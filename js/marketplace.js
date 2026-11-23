@@ -10,19 +10,34 @@
   const STORAGE_KEY_PUBLIC = 'uninest_posted_marketplace_items';
   const STORAGE_KEY_PENDING_SUBMISSIONS = 'uninest_pending_verification_submissions';
   const STORAGE_KEY_INQUIRIES = 'uninest_agent_inquiries';
+  const STORAGE_KEY_DELETED_REFS = 'uninest_deleted_marketplace_refs';
+  const CLEAN_SLATE_VERSION = 'uninest_clean_slate_v4_20261124';
+  const RESET_EPOCH_ID = 1795469500000;
 
-  const SEED_SUBMISSION_IDS = new Set([991, 992, 1, 2, 3, 4, 5, 6, 7, 8]);
-  const SEED_SUBMISSION_REFS = new Set(['UN-VET-7821', 'UN-VET-8430', 'UN-MKT-101', 'UN-MKT-102', 'UN-MKT-103', 'UN-MKT-104', 'UN-MKT-105', 'UN-MKT-106', 'UN-MKT-107', 'UN-MKT-108']);
+  const SEED_SUBMISSION_IDS = new Set([991, 992, 1, 2, 3, 4, 5, 6, 7, 8, 8001, 9001]);
+  const SEED_SUBMISSION_REFS = new Set(['UN-VET-7821', 'UN-VET-8430', 'UN-VET-8001', 'UN-MKT-101', 'UN-MKT-102', 'UN-MKT-103', 'UN-MKT-104', 'UN-MKT-105', 'UN-MKT-106', 'UN-MKT-107', 'UN-MKT-108']);
   const SEED_INQUIRY_REFS = new Set(['UN-INQ-40812', 'UN-INQ-51920']);
 
   // Ensure any legacy seeded placeholder items/submissions/inquiries are purged
   function initDefaultSubmissions() {
     try {
+      if (localStorage.getItem('uninest_storage_version') !== CLEAN_SLATE_VERSION) {
+        localStorage.removeItem(STORAGE_KEY_PUBLIC);
+        localStorage.removeItem('uninest_public_marketplace_items');
+        localStorage.removeItem(STORAGE_KEY_PENDING_SUBMISSIONS);
+        localStorage.removeItem('uninest_sold_items');
+        localStorage.removeItem(STORAGE_KEY_INQUIRIES);
+        localStorage.removeItem(STORAGE_KEY_DELETED_REFS);
+        document.cookie = 'uninest_posted_houses_meta=; path=/; max-age=0; SameSite=Lax';
+        document.cookie = 'uninest_sold_houses_archive=; path=/; max-age=0; SameSite=Lax';
+        localStorage.setItem('uninest_storage_version', CLEAN_SLATE_VERSION);
+      }
+
       const rawPending = localStorage.getItem(STORAGE_KEY_PENDING_SUBMISSIONS);
       if (rawPending) {
         const parsed = JSON.parse(rawPending);
         if (Array.isArray(parsed)) {
-          const cleaned = parsed.filter(item => !SEED_SUBMISSION_IDS.has(Number(item.id)) && !SEED_SUBMISSION_REFS.has(item.listingRef));
+          const cleaned = parsed.filter(item => item && Number(item.id) >= RESET_EPOCH_ID && !SEED_SUBMISSION_IDS.has(Number(item.id)) && !SEED_SUBMISSION_REFS.has(item.listingRef));
           localStorage.setItem(STORAGE_KEY_PENDING_SUBMISSIONS, JSON.stringify(cleaned));
         }
       }
@@ -30,7 +45,7 @@
       if (rawPublic) {
         const parsedPub = JSON.parse(rawPublic);
         if (Array.isArray(parsedPub)) {
-          const cleanedPub = parsedPub.filter(item => !SEED_SUBMISSION_IDS.has(Number(item.id)) && !SEED_SUBMISSION_REFS.has(item.listingRef));
+          const cleanedPub = parsedPub.filter(item => item && Number(item.id) >= RESET_EPOCH_ID && !SEED_SUBMISSION_IDS.has(Number(item.id)) && !SEED_SUBMISSION_REFS.has(item.listingRef));
           localStorage.setItem(STORAGE_KEY_PUBLIC, JSON.stringify(cleanedPub));
         }
       }
@@ -60,19 +75,61 @@
   let serverMarketplaceItems = [];
   let isFetchingServerItems = false;
 
+  function getDeletedRefsSet() {
+    const deleted = new Set();
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY_DELETED_REFS);
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) arr.forEach(function(r) { deleted.add(String(r)); });
+      }
+    } catch (e) {}
+    return deleted;
+  }
+
+  function recordDeletedRef(itemId, itemRef) {
+    try {
+      const set = getDeletedRefsSet();
+      if (itemId != null) set.add(String(itemId));
+      if (itemRef) set.add(String(itemRef));
+      localStorage.setItem(STORAGE_KEY_DELETED_REFS, JSON.stringify(Array.from(set)));
+    } catch (e) {}
+  }
+
   function syncMarketplaceFromServer(callback) {
     if (isFetchingServerItems) return;
     isFetchingServerItems = true;
-    fetch('/api/marketplace')
+    fetch('/api/marketplace', { cache: 'no-store' })
       .then(function(res) { return res.ok ? res.json() : null; })
       .then(function(data) {
         isFetchingServerItems = false;
         if (data && Array.isArray(data.items)) {
-          serverMarketplaceItems = data.items;
+          const deletedRefs = getDeletedRefsSet();
+          let localStored = [];
           try {
-            localStorage.setItem(STORAGE_KEY_PUBLIC, JSON.stringify(data.items));
+            const rawLocal = localStorage.getItem(STORAGE_KEY_PUBLIC);
+            if (rawLocal) {
+              const parsed = JSON.parse(rawLocal);
+              if (Array.isArray(parsed)) localStored = parsed;
+            }
+          } catch (e) {}
+
+          const seen = new Set();
+          const merged = [];
+          for (const item of [...data.items, ...localStored]) {
+            if (!item || Number(item.id) < RESET_EPOCH_ID) continue;
+            const refKey = String(item.listingRef || item.id);
+            if (seen.has(refKey)) continue;
+            if (deletedRefs.has(String(item.id)) || (item.listingRef && deletedRefs.has(String(item.listingRef)))) continue;
+            seen.add(refKey);
+            merged.push(item);
+          }
+
+          serverMarketplaceItems = merged;
+          try {
+            localStorage.setItem(STORAGE_KEY_PUBLIC, JSON.stringify(merged));
           } catch(e) {}
-          if (typeof callback === 'function') callback(data.items);
+          if (typeof callback === 'function') callback(merged);
           if (typeof window.__uninestReRenderMarketplace === 'function') {
             window.__uninestReRenderMarketplace();
           }
@@ -88,12 +145,9 @@
   // Auto-sync on script load
   syncMarketplaceFromServer();
 
-  window.setInterval(syncMarketplaceFromServer, 8000);
-  window.addEventListener('focus', syncMarketplaceFromServer);
-
   // Retrieve public catalog items (Private contact information strictly excluded)
   function getAllItems() {
-    const soldRefs = new Set();
+    const soldRefs = getDeletedRefsSet();
     try {
       const rawSold = localStorage.getItem('uninest_sold_items');
       if (rawSold) {
@@ -109,18 +163,13 @@
 
     function isItemSold(item) {
       if (!item) return true;
-      if (item.status && item.status.toLowerCase() === 'sold') return true;
+      if (Number(item.id) < RESET_EPOCH_ID) return true;
+      if (item.status && item.status.toLowerCase() !== 'live') return true;
       const ref = item.listingRef ? String(item.listingRef) : null;
       const idStr = item.id != null ? String(item.id) : null;
       if (ref && soldRefs.has(ref)) return true;
       if (idStr && soldRefs.has(idStr)) return true;
       return false;
-    }
-
-    if (serverMarketplaceItems && serverMarketplaceItems.length > 0) {
-      return serverMarketplaceItems.filter(function(i) {
-        return !isItemSold(i);
-      });
     }
 
     let baseItems = [];
@@ -140,7 +189,8 @@
 
     const seen = new Set();
     const result = [];
-    for (const item of [...localApproved, ...baseItems]) {
+    const combinedSources = [...(serverMarketplaceItems || []), ...(localApproved || []), ...(baseItems || [])];
+    for (const item of combinedSources) {
       if (isItemSold(item)) continue;
       const key = item.listingRef || item.id;
       if (seen.has(key)) continue;
@@ -158,8 +208,8 @@
         image: item.image,
         sellerType: 'Verified Student Listing',
         listingRef: item.listingRef || `UN-MKT-${item.id}`,
-        agentId: item.agentId || 1,
-        agentName: item.agentName || 'UniNest Verified Campus Agent',
+        agentId: item.agentId || item.assignedAgentId || 1,
+        agentName: item.agentName || item.assignedAgentName || 'UniNest Verified Campus Agent',
         description: item.description,
         verifiedListing: true,
         postedAt: item.postedAt || 'Recently'
@@ -808,10 +858,19 @@
     };
     const assignedAgent = campusAgents[campus] || { id: 1, name: 'George Scourser' };
 
-    // Intake submission record stored in the Agent's Vetting Queue
+    const activeUser = window.UniAuth ? window.UniAuth.getUser() : null;
+    const isPosterAgent =
+      !!getCurrentVerifiedAgent() ||
+      (ownerEmail &&
+        ['georgescourser@gmail.com', 'oderocarilus@gmail.com'].includes(
+          ownerEmail.trim().toLowerCase()
+        ));
+    const initialStatus = isPosterAgent ? 'Live' : 'Pending Agent Verification';
+
+    // Intake submission record (automatically Live when posted by a verified agent)
     const pendingSubmission = {
       id: itemId,
-      listingRef,
+      listingRef: isPosterAgent ? `UN-MKT-${Math.floor(1000 + Math.random() * 9000)}` : listingRef,
       title,
       category,
       price: `Ksh ${parseInt(priceNum).toLocaleString()}`,
@@ -825,18 +884,22 @@
       verificationMethod,
       ownerLegalName,
       ownerPhone,
-      ownerEmail,
+      ownerEmail: ownerEmail || (activeUser && activeUser.email) || '',
       ownerPrivateAddress,
       assignedAgentId: assignedAgent.id,
       assignedAgentName: assignedAgent.name,
       submittedAt: new Date().toISOString(),
-      status: 'Pending Agent Verification'
+      status: initialStatus,
+      verifiedListing: isPosterAgent
     };
 
     // Persist to central cloud database across all devices
     fetch('/api/marketplace', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-uninest-agent-email': (activeUser && activeUser.email) || ownerEmail || '',
+      },
       body: JSON.stringify(pendingSubmission),
     })
       .then(function(res) {
@@ -848,24 +911,51 @@
         });
       })
       .then(function(cloudRes) {
-        try {
-          const stored = localStorage.getItem(STORAGE_KEY_PENDING_SUBMISSIONS);
-          const list = stored ? JSON.parse(stored) : [];
-          list.unshift(cloudRes.item);
-          localStorage.setItem(STORAGE_KEY_PENDING_SUBMISSIONS, JSON.stringify(list));
-        } catch (storageError) {
-          console.error('Error saving pending submission locally:', storageError);
+        const savedItem = cloudRes.item;
+        const isLiveNow = savedItem.status === 'Live';
+
+        if (isLiveNow) {
+          serverMarketplaceItems = [
+            savedItem,
+            ...(serverMarketplaceItems || []).filter(i => i.listingRef !== savedItem.listingRef && i.id != savedItem.id)
+          ];
+          try {
+            const storedPub = localStorage.getItem(STORAGE_KEY_PUBLIC);
+            const pubList = storedPub ? JSON.parse(storedPub) : [];
+            const filteredPub = pubList.filter(i => i.listingRef !== savedItem.listingRef && i.id != savedItem.id);
+            filteredPub.unshift(savedItem);
+            localStorage.setItem(STORAGE_KEY_PUBLIC, JSON.stringify(filteredPub));
+          } catch (storageError) {
+            console.error('Error saving public item locally:', storageError);
+          }
+        } else {
+          try {
+            const stored = localStorage.getItem(STORAGE_KEY_PENDING_SUBMISSIONS);
+            const list = stored ? JSON.parse(stored) : [];
+            list.unshift(savedItem);
+            localStorage.setItem(STORAGE_KEY_PENDING_SUBMISSIONS, JSON.stringify(list));
+          } catch (storageError) {
+            console.error('Error saving pending submission locally:', storageError);
+          }
         }
+
         syncMarketplaceFromServer();
+        initMarketplacePage();
+        initHomepageMarketplace();
         form.reset();
         closePostModal();
-        alert(
-          `✓ Item Submitted to Agent Verification Queue!\n\n` +
-          `Verification Ticket: ${cloudRes.listingRef || listingRef}\n` +
-          `Assigned Agent: ${assignedAgent.name}\n` +
-          `Verification Method: ${verificationMethod}\n\n` +
-          `Your item is currently pending verification. Your assigned agent will contact you to conduct the physical inspection before publishing it live on the marketplace. Your contact details remain confidential.`
-        );
+
+        if (isLiveNow) {
+          showToast(`✓ Item "${savedItem.title}" (${savedItem.listingRef}) is now LIVE on the marketplace across all accounts!`);
+        } else {
+          alert(
+            `✓ Item Submitted to Agent Verification Queue!\n\n` +
+            `Verification Ticket: ${cloudRes.listingRef || listingRef}\n` +
+            `Assigned Agent: ${assignedAgent.name}\n` +
+            `Verification Method: ${verificationMethod}\n\n` +
+            `Your item is currently pending verification. Your assigned agent will contact you to conduct the physical inspection before publishing it live on the marketplace. Your contact details remain confidential.`
+          );
+        }
       })
       .catch(function(err) {
         console.error('Marketplace submission failed:', err);
@@ -1360,7 +1450,13 @@
   }
 
   function fetchAgentPendingSubmissions(agent, callback) {
-    fetch('/api/marketplace?scope=agent')
+    const currentAgent = agent || currentActiveAgent || getCurrentVerifiedAgent();
+    const agentEmail = (currentAgent && currentAgent.email) || '';
+    fetch('/api/marketplace?scope=agent', {
+      headers: {
+        'x-uninest-agent-email': agentEmail,
+      },
+    })
       .then(function(res) { return res.ok ? res.json() : null; })
       .then(function(data) {
         if (data && Array.isArray(data.items)) {
@@ -1843,43 +1939,49 @@
     }
 
     const itemIndex = pending.findIndex(i => i.listingRef === listingRef);
-    if (itemIndex === -1) return;
+    if (itemIndex !== -1) {
+      const item = pending[itemIndex];
 
-    const item = pending[itemIndex];
+      // Remove from pending
+      pending.splice(itemIndex, 1);
+      localStorage.setItem(STORAGE_KEY_PENDING_SUBMISSIONS, JSON.stringify(pending));
 
-    // Remove from pending
-    pending.splice(itemIndex, 1);
-    localStorage.setItem(STORAGE_KEY_PENDING_SUBMISSIONS, JSON.stringify(pending));
+      // Create public item (Stripped of confidential owner phone, email, and room number)
+      const publicItem = {
+        id: item.id,
+        title: item.title,
+        category: item.category,
+        price: item.price,
+        originalPrice: item.originalPrice,
+        condition: item.condition,
+        campus: item.campus,
+        campusName: item.campusName,
+        location: item.location,
+        image: item.image,
+        sellerType: 'Verified Student Listing',
+        listingRef: item.listingRef,
+        agentId: item.assignedAgentId,
+        agentName: item.assignedAgentName,
+        description: item.description,
+        status: 'Live',
+        verifiedListing: true,
+        postedAt: 'Just now'
+      };
 
-    // Create public item (Stripped of confidential owner phone, email, and room number)
-    const publicItem = {
-      id: item.id,
-      title: item.title,
-      category: item.category,
-      price: item.price,
-      originalPrice: item.originalPrice,
-      condition: item.condition,
-      campus: item.campus,
-      campusName: item.campusName,
-      location: item.location,
-      image: item.image,
-      sellerType: 'Verified Student Listing',
-      listingRef: item.listingRef,
-      agentId: item.assignedAgentId,
-      agentName: item.assignedAgentName,
-      description: item.description,
-      verifiedListing: true,
-      postedAt: 'Just now'
-    };
-
-    // Add to approved public list
-    try {
-      const storedPub = localStorage.getItem(STORAGE_KEY_PUBLIC);
-      const pubList = storedPub ? JSON.parse(storedPub) : [];
-      pubList.unshift(publicItem);
-      localStorage.setItem(STORAGE_KEY_PUBLIC, JSON.stringify(pubList));
-    } catch (e) {
-      console.error(e);
+      // Add to in-memory serverMarketplaceItems and approved public localStorage
+      serverMarketplaceItems = [
+        publicItem,
+        ...(serverMarketplaceItems || []).filter(i => i.listingRef !== item.listingRef && i.id != item.id)
+      ];
+      try {
+        const storedPub = localStorage.getItem(STORAGE_KEY_PUBLIC);
+        const pubList = storedPub ? JSON.parse(storedPub) : [];
+        const filteredPub = pubList.filter(i => i.listingRef !== item.listingRef && i.id != item.id);
+        filteredPub.unshift(publicItem);
+        localStorage.setItem(STORAGE_KEY_PUBLIC, JSON.stringify(filteredPub));
+      } catch (e) {
+        console.error(e);
+      }
     }
 
     renderAgentVettingQueue();
@@ -1887,13 +1989,20 @@
     initHomepageMarketplace();
 
     // Persist approval to central cloud database across all devices
+    const agentEmail = currentAgent.email || '';
     fetch('/api/marketplace', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-uninest-agent-email': agentEmail,
+      },
       body: JSON.stringify({ action: 'approve', listingRef: listingRef }),
     })
       .then(function(res) {
-        if (res.ok) syncMarketplaceFromServer();
+        if (res.ok) {
+          fetchAgentPendingSubmissions(currentAgent);
+          syncMarketplaceFromServer();
+        }
       })
       .catch(function(err) {
         console.warn('Marketplace cloud approve notice:', err);
@@ -1912,9 +2021,13 @@
     const slot = prompt(`Enter scheduled date & time for on-site inspection visit (e.g. Tomorrow at 3:00 PM):`);
     if (!slot || !slot.trim()) return;
 
+    const agentEmail = currentAgent.email || '';
     fetch('/api/marketplace', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-uninest-agent-email': agentEmail,
+      },
       body: JSON.stringify({ action: 'schedule', listingRef: listingRef, updateData: { slot: slot.trim() } }),
     }).catch(function(e) {});
 
@@ -1930,9 +2043,13 @@
     }
     if (!confirm(`Are you sure you want to reject submission ${listingRef}? The seller will be notified to correct defects.`)) return;
 
+    const agentEmail = currentAgent.email || '';
     fetch('/api/marketplace', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-uninest-agent-email': agentEmail,
+      },
       body: JSON.stringify({ action: 'reject', listingRef: listingRef }),
     }).catch(function(e) {});
 
@@ -1974,7 +2091,10 @@
         // Sync inquiry update to central cloud store
         fetch('/api/marketplace/inquiries', {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-uninest-agent-email': currentAgent.email || '',
+          },
           body: JSON.stringify({
             refCode: refCode,
             status: newStatus,
@@ -2195,7 +2315,8 @@
 
     if (!confirmed) return;
 
-    // 1. Remove from localStorage STORAGE_KEY_PUBLIC
+    // 1. Remove from localStorage STORAGE_KEY_PUBLIC and record tombstone
+    recordDeletedRef(itemId, itemRef || targetItem.listingRef);
     try {
       const stored = localStorage.getItem(STORAGE_KEY_PUBLIC);
       if (stored) {
@@ -2281,7 +2402,8 @@
         localStorage.setItem('uninest_sold_items', JSON.stringify(soldList));
       }
 
-      // 2. Remove from localStorage STORAGE_KEY_PUBLIC
+      // 2. Remove from localStorage STORAGE_KEY_PUBLIC and record tombstone
+      recordDeletedRef(itemId, itemRef || targetItem.listingRef);
       const stored = localStorage.getItem(STORAGE_KEY_PUBLIC);
       if (stored) {
         let pubList = JSON.parse(stored);
@@ -2352,9 +2474,22 @@
       if (target) {
         target.dealUpdate = msg.trim();
         localStorage.setItem(STORAGE_KEY_INQUIRIES, JSON.stringify(list));
-        renderAgentInquiriesQueue();
-        showToast(`Deal update dispatched for ${refCode}.`);
       }
+      fetch('/api/marketplace/inquiries', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-uninest-agent-email': currentAgent.email || '',
+        },
+        body: JSON.stringify({
+          refCode: refCode,
+          dealUpdate: msg.trim(),
+        }),
+      }).catch(function(err) {
+        console.warn('Deal update cloud sync warning:', err);
+      });
+      renderAgentInquiriesQueue();
+      showToast(`Deal update dispatched for ${refCode}.`);
     } catch (e) {
       console.error(e);
     }
@@ -2408,6 +2543,7 @@
   // Global namespace export
   window.UniMarketplace = {
     getAllItems,
+    syncMarketplaceFromServer,
     initHomepageMarketplace,
     initMarketplacePage,
     openQuickView,

@@ -33,7 +33,7 @@ export default function HomeMarketplaceShowcase() {
     function filterOutSold(items: MarketplaceItem[]): MarketplaceItem[] {
       const soldRefs = getSoldRefs();
       return items.filter((item) => {
-        if (!item || Number(item.id) < 1795468000000) return false;
+        if (!item || Number(item.id) < 1795469500000) return false;
         if ((item as any).status && (item as any).status.toLowerCase() !== 'live') {
           return false;
         }
