@@ -340,7 +340,9 @@ export async function getPropertyById(propertyId: number) {
     const db = await getCloudDatabase()
     ;(db.deletedPropertyIds || []).forEach((id) => deletedIds.add(Number(id)))
     if (deletedIds.has(Number(propertyId))) return null
-    const foundCloud = (db.properties || []).find((p) => Number(p.id) === Number(propertyId))
+    const foundCloud = (db.properties || []).find(
+      (p) => Number(p.id) === Number(propertyId) && !p.is_sold
+    )
     if (foundCloud) {
       return {
         ...foundCloud,
@@ -357,11 +359,15 @@ export async function getPropertyById(propertyId: number) {
       .select(`*, agents (*), reviews (*)`)
       .eq('id', propertyId)
       .maybeSingle()
-    if (propertyData) return propertyData
+    if (propertyData && !propertyData.is_sold && !deletedIds.has(Number(propertyData.id))) {
+      return propertyData
+    }
   } catch {}
 
   const localList = readStoredPostedProperties()
-  const foundLocal = localList.find((p) => Number(p.id) === Number(propertyId))
+  const foundLocal = localList.find(
+    (p) => Number(p.id) === Number(propertyId) && !p.is_sold && !deletedIds.has(Number(p.id))
+  )
   if (foundLocal) {
     return {
       ...foundLocal,
@@ -376,7 +382,10 @@ export async function getPropertyById(propertyId: number) {
     if (rawCookie) {
       const parsed = JSON.parse(decodeURIComponent(rawCookie))
       if (Array.isArray(parsed)) {
-        const foundCookie = parsed.find((p: any) => Number(p.id) === Number(propertyId))
+        const foundCookie = parsed.find(
+          (p: any) =>
+            Number(p.id) === Number(propertyId) && !p.is_sold && !deletedIds.has(Number(p.id))
+        )
         if (foundCookie) {
           return {
             ...foundCookie,
@@ -690,9 +699,11 @@ export async function deleteProperty(propertyId: number) {
 export async function getSoldPropertiesArchive() {
   try {
     const db = await getCloudDatabase()
-    const soldProps = (db.properties || [])
-      .filter((p) => p.is_sold)
-      .map((p) => ({
+    const rawSoldList = [
+      ...(Array.isArray(db.soldProperties) ? db.soldProperties : []),
+      ...(Array.isArray(db.properties) ? db.properties.filter((p) => p.is_sold) : []),
+    ]
+    const soldProps = rawSoldList.map((p) => ({
         id: `house-cloud-${p.id}`,
         title: p.title || 'Student Property',
         kind: 'house' as const,
@@ -749,14 +760,20 @@ export async function markPropertyAsSold(propertyId: number) {
   }
 
   try {
-    // 1. Mark as sold in shared cloud store
+    const targetProp = await getPropertyById(propertyId)
+
+    // 1. Archive as sold and delete away from active `db.properties` in shared cloud store
     await markStorePropertySold(propertyId)
 
-    // 1b. Also mark as sold in local posted properties store and remove from active POSTED_HOUSES_COOKIE
+    // 2. Also delete from Supabase `properties` table if present so it never appears in Properties again
+    try {
+      const supabase = await createClient()
+      await supabase.from('properties').delete().eq('id', propertyId)
+    } catch {}
+
+    // 3. Remove completely from local posted properties store and active POSTED_HOUSES_COOKIE
     const existingLocal = readStoredPostedProperties()
-    const updatedLocal = existingLocal.map((p) =>
-      Number(p.id) === Number(propertyId) ? { ...p, is_sold: true } : p
-    )
+    const updatedLocal = existingLocal.filter((p) => Number(p.id) !== Number(propertyId))
     writeStoredPostedProperties(updatedLocal)
 
     try {
@@ -776,8 +793,6 @@ export async function markPropertyAsSold(propertyId: number) {
         }
       }
     } catch {}
-
-    const targetProp = await getPropertyById(propertyId)
 
     if (targetProp) {
       const existingArchive = await getSoldPropertiesArchive()

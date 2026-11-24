@@ -26,6 +26,15 @@ export default function HomeMarketplaceShowcase() {
             });
           }
         }
+        const rawDeleted = localStorage.getItem('uninest_deleted_marketplace_refs');
+        if (rawDeleted) {
+          const delArr = JSON.parse(rawDeleted);
+          if (Array.isArray(delArr)) {
+            delArr.forEach((r: any) => {
+              if (r) soldRefs.add(String(r));
+            });
+          }
+        }
       } catch {}
       return soldRefs;
     }
@@ -50,13 +59,34 @@ export default function HomeMarketplaceShowcase() {
         const res = await fetch('/api/marketplace', { cache: 'no-store' });
         if (res.ok) {
           const json = await res.json();
+          if (Array.isArray(json?.removedRefs) && json.removedRefs.length > 0) {
+            try {
+              const existingDel = getSoldRefs();
+              json.removedRefs.forEach((r: string) => existingDel.add(String(r)));
+              localStorage.setItem(
+                'uninest_deleted_marketplace_refs',
+                JSON.stringify(Array.from(existingDel))
+              );
+            } catch {}
+          }
           if (Array.isArray(json?.items)) {
             serverItems = json.items;
             fetchedFromServer = true;
+            try {
+              localStorage.setItem(
+                'uninest_posted_marketplace_items',
+                JSON.stringify(json.items)
+              );
+            } catch {}
           }
         }
       } catch (e) {
         console.warn('Error fetching live marketplace items:', e);
+      }
+
+      if (!cancelled && fetchedFromServer) {
+        setLiveItems(filterOutSold(serverItems));
+        return;
       }
 
       let localItems: MarketplaceItem[] = [];
@@ -75,16 +105,7 @@ export default function HomeMarketplaceShowcase() {
       }
 
       if (!cancelled) {
-        const seen = new Set<string>();
-        const combined: MarketplaceItem[] = [];
-        for (const item of [...serverItems, ...localItems, ...MARKETPLACE_ITEMS]) {
-          if (!item) continue;
-          const key = String(item.listingRef || item.id);
-          if (seen.has(key)) continue;
-          seen.add(key);
-          combined.push(item);
-        }
-        setLiveItems(filterOutSold(combined));
+        setLiveItems(filterOutSold([...localItems, ...MARKETPLACE_ITEMS]));
       }
     }
 

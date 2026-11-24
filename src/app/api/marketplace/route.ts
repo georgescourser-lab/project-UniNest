@@ -102,10 +102,19 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // If scope === 'agent', check agent access or return all items for verified portal
+    // Collect all sold, rejected, or deleted item IDs and listingRefs so clients immediately purge them from localStorage
+    const removedRefsSet = new Set<string>(db.deletedMarketplaceRefs || []);
+    for (const item of combined) {
+      if (item.status === 'Sold' || item.status === 'Rejected') {
+        if (item.id != null) removedRefsSet.add(String(item.id));
+        if (item.listingRef) removedRefsSet.add(String(item.listingRef));
+      }
+    }
+
+    // If scope === 'agent', check agent access or return active items for verified portal
     let filtered = combined;
     if (scope !== 'agent') {
-      // Public visitors only see Live items (or Sold if explicitly requested)
+      // Public visitors only see Live items (or Sold if explicitly requested for /sold archive)
       if (statusFilter === 'sold') {
         filtered = filtered.filter((i) => i.status === 'Sold');
       } else {
@@ -113,6 +122,9 @@ export async function GET(req: NextRequest) {
       }
     } else if (statusFilter) {
       filtered = filtered.filter((i) => i.status?.toLowerCase() === statusFilter.toLowerCase());
+    } else {
+      // Exclude Sold and Rejected items from active agent portal queues
+      filtered = filtered.filter((i) => i.status !== 'Sold' && i.status !== 'Rejected');
     }
 
     if (campusFilter && campusFilter !== 'All') {
@@ -131,6 +143,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       success: true,
       items: responseItems,
+      removedRefs: Array.from(removedRefsSet),
       total: responseItems.length,
       updatedAt: db.updatedAt || new Date().toISOString(),
     });

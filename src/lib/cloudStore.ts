@@ -72,6 +72,7 @@ export interface CloudInquiry {
 
 export interface CloudDatabase {
   properties: CloudProperty[];
+  soldProperties?: CloudProperty[];
   marketplace: CloudMarketplaceItem[];
   inquiries: CloudInquiry[];
   deletedPropertyIds?: number[];
@@ -174,6 +175,7 @@ function getResendKey(): string {
 function createEmptyDb(): CloudDatabase {
   return {
     properties: [],
+    soldProperties: [],
     marketplace: [],
     inquiries: [],
     deletedPropertyIds: [],
@@ -221,10 +223,16 @@ function sanitizeDb(raw: any): CloudDatabase | null {
     ? raw.properties.filter((p: any) => {
         if (!p || typeof p.id !== 'number') return false;
         if (p.id < RESET_EPOCH_ID) return false;
+        if (p.is_sold) return false;
         if (deletedPropIds.has(Number(p.id))) return false;
         return true;
       })
     : [];
+
+  const soldProperties: CloudProperty[] = [
+    ...(Array.isArray(raw.soldProperties) ? raw.soldProperties : []),
+    ...(Array.isArray(raw.properties) ? raw.properties.filter((p: any) => p && p.is_sold) : []),
+  ].filter((p: any) => p && typeof p.id === 'number' && p.id >= RESET_EPOCH_ID);
 
   const marketplace: CloudMarketplaceItem[] = Array.isArray(raw.marketplace)
     ? raw.marketplace.filter((m: any) => {
@@ -242,6 +250,7 @@ function sanitizeDb(raw: any): CloudDatabase | null {
 
   return {
     properties,
+    soldProperties,
     marketplace,
     inquiries,
     deletedPropertyIds: Array.from(deletedPropIds),
@@ -269,11 +278,29 @@ function mergeDatabases(...sources: (CloudDatabase | null | undefined)[]): Cloud
     return tB - tA;
   });
 
+  const soldPropMap = new Map<number, CloudProperty>();
+  for (const src of sortedSources) {
+    for (const sp of src.soldProperties || []) {
+      const id = Number(sp.id);
+      if (id < RESET_EPOCH_ID) continue;
+      deletedPropIds.add(id);
+      if (!soldPropMap.has(id)) {
+        soldPropMap.set(id, { ...sp, is_sold: true });
+      }
+    }
+  }
+
   const propMap = new Map<number, CloudProperty>();
   for (const src of sortedSources) {
     for (const p of src.properties || []) {
       const id = Number(p.id);
-      if (id < RESET_EPOCH_ID || deletedPropIds.has(id)) continue;
+      if (id < RESET_EPOCH_ID) continue;
+      if (p.is_sold) {
+        deletedPropIds.add(id);
+        if (!soldPropMap.has(id)) soldPropMap.set(id, { ...p, is_sold: true });
+        continue;
+      }
+      if (deletedPropIds.has(id)) continue;
       const existing = propMap.get(id);
       if (!existing) {
         propMap.set(id, p);
@@ -287,7 +314,7 @@ function mergeDatabases(...sources: (CloudDatabase | null | undefined)[]): Cloud
         propMap.set(id, {
           ...p,
           ...existing,
-          is_sold: Boolean(existing.is_sold || p.is_sold),
+          is_sold: false,
           image: existing.image || p.image || bestImages[0] || null,
           images: bestImages,
         });
@@ -349,6 +376,7 @@ function mergeDatabases(...sources: (CloudDatabase | null | undefined)[]): Cloud
 
   return {
     properties: Array.from(propMap.values()).sort((a, b) => Number(b.id) - Number(a.id)),
+    soldProperties: Array.from(soldPropMap.values()).sort((a, b) => Number(b.id) - Number(a.id)),
     marketplace: Array.from(mktMap.values()).sort((a, b) => Number(b.id) - Number(a.id)),
     inquiries: Array.from(inqMap.values()),
     deletedPropertyIds: Array.from(deletedPropIds),
@@ -405,6 +433,7 @@ async function readFromPostgresOrRest(): Promise<CloudDatabase | null> {
 
       return sanitizeDb({
         properties: Array.isArray(systemState?.properties) ? systemState.properties : [],
+        soldProperties: Array.isArray(systemState?.soldProperties) ? systemState.soldProperties : [],
         marketplace: items,
         inquiries: Array.isArray(systemState?.inquiries) ? systemState.inquiries : [],
         deletedPropertyIds: Array.isArray(systemState?.deletedPropertyIds)
@@ -464,6 +493,7 @@ async function readFromPostgresOrRest(): Promise<CloudDatabase | null> {
           if (systemState || items.length > 0) {
             return sanitizeDb({
               properties: Array.isArray(systemState?.properties) ? systemState.properties : [],
+              soldProperties: Array.isArray(systemState?.soldProperties) ? systemState.soldProperties : [],
               marketplace: items,
               inquiries: Array.isArray(systemState?.inquiries) ? systemState.inquiries : [],
               deletedPropertyIds: Array.isArray(systemState?.deletedPropertyIds)
@@ -492,6 +522,7 @@ async function writeToPostgres(db: CloudDatabase): Promise<boolean> {
     // 1. Upsert the system state row (properties, inquiries, tombstones)
     const statePayload = {
       properties: db.properties || [],
+      soldProperties: db.soldProperties || [],
       inquiries: db.inquiries || [],
       deletedPropertyIds: db.deletedPropertyIds || [],
       deletedMarketplaceRefs: db.deletedMarketplaceRefs || [],
@@ -770,13 +801,26 @@ export async function removeCloudProperty(id: number): Promise<boolean> {
 
 export async function markCloudPropertySold(id: number): Promise<boolean> {
   const db = await getCloudDatabase(true);
-  const prop = db.properties.find((p) => Number(p.id) === Number(id));
+  const numId = Number(id);
+  const prop = db.properties.find((p) => Number(p.id) === numId);
+
+  // 1. Archive into soldProperties so /sold still shows the completed deal
   if (prop) {
-    prop.is_sold = true;
-    await saveCloudDatabase(db);
-    return true;
+    const soldList = Array.isArray(db.soldProperties) ? db.soldProperties : [];
+    if (!soldList.some((sp) => Number(sp.id) === numId)) {
+      soldList.unshift({ ...prop, is_sold: true });
+    }
+    db.soldProperties = soldList;
   }
-  return false;
+
+  // 2. Delete the property away from active `db.properties` and add to `deletedPropertyIds`
+  const deletedSet = new Set<number>(db.deletedPropertyIds || []);
+  deletedSet.add(numId);
+  db.deletedPropertyIds = Array.from(deletedSet);
+  db.properties = db.properties.filter((p) => Number(p.id) !== numId);
+
+  await saveCloudDatabase(db);
+  return true;
 }
 
 // ============================================================================

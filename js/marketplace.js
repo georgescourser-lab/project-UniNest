@@ -104,20 +104,17 @@
       .then(function(data) {
         isFetchingServerItems = false;
         if (data && Array.isArray(data.items)) {
+          if (Array.isArray(data.removedRefs) && data.removedRefs.length > 0) {
+            data.removedRefs.forEach(function(ref) {
+              recordDeletedRef(ref, ref);
+            });
+          }
           const deletedRefs = getDeletedRefsSet();
-          let localStored = [];
-          try {
-            const rawLocal = localStorage.getItem(STORAGE_KEY_PUBLIC);
-            if (rawLocal) {
-              const parsed = JSON.parse(rawLocal);
-              if (Array.isArray(parsed)) localStored = parsed;
-            }
-          } catch (e) {}
-
           const seen = new Set();
           const merged = [];
-          for (const item of [...data.items, ...localStored]) {
+          for (const item of data.items) {
             if (!item || Number(item.id) < RESET_EPOCH_ID) continue;
+            if (item.status && item.status.toLowerCase() !== 'live') continue;
             const refKey = String(item.listingRef || item.id);
             if (seen.has(refKey)) continue;
             if (deletedRefs.has(String(item.id)) || (item.listingRef && deletedRefs.has(String(item.listingRef)))) continue;
@@ -2105,8 +2102,8 @@
         });
 
         // AUTOMATIC SOLD INTEGRATION: When handover is marked "Completed", automatically mark item as SOLD and remove from marketplace!
-        if (newStatus === 'Completed' && target.itemId) {
-          markAgentItemSold(target.itemId, target.itemTitle || '');
+        if (newStatus === 'Completed' && (target.itemId || target.listingRef || target.itemTitle)) {
+          markAgentItemSold(target.itemId, target.listingRef || '', target.itemTitle || '');
         }
 
         renderAgentInquiriesQueue();
@@ -2357,7 +2354,7 @@
     showToast(`✓ Listing "${targetItem.title}" deleted successfully from your portal.`);
   }
 
-  function markAgentItemSold(itemId, itemRef) {
+  function markAgentItemSold(itemId, itemRef, itemTitle) {
     const currentAgent = currentActiveAgent || getCurrentVerifiedAgent();
     if (!currentAgent) {
       alert('Unauthorized: Only verified agents can mark items as sold.');
@@ -2365,7 +2362,11 @@
     }
 
     const allItems = getAllItems();
-    const targetItem = allItems.find(i => i.id == itemId || (itemRef && i.listingRef === itemRef));
+    const targetItem = allItems.find(i =>
+      (itemId && i.id == itemId) ||
+      (itemRef && i.listingRef === itemRef) ||
+      (itemTitle && i.title && i.title.toLowerCase() === itemTitle.toLowerCase())
+    );
     if (!targetItem) {
       showToast('Item not found or already sold.', 'error');
       return;
@@ -2376,12 +2377,15 @@
       return;
     }
 
+    const resolvedId = targetItem.id || itemId;
+    const resolvedRef = targetItem.listingRef || itemRef || '';
+
     // 1. Add to local sold archive
     try {
       const rawSold = localStorage.getItem('uninest_sold_items');
       const soldList = rawSold ? JSON.parse(rawSold) : [];
       const soldListing = {
-        id: `item-live-${targetItem.id}-${Date.now()}`,
+        id: `item-live-${resolvedId}-${Date.now()}`,
         title: targetItem.title,
         kind: 'item',
         subCategory: targetItem.category || 'Marketplace',
@@ -2391,7 +2395,7 @@
         campusName: targetItem.campusName || targetItem.campus || 'Campus',
         location: targetItem.location || 'Campus Hub',
         image: targetItem.image,
-        listingRef: targetItem.listingRef || `UN-MKT-${targetItem.id}`,
+        listingRef: resolvedRef || `UN-MKT-${resolvedId}`,
         agentName: currentAgent.name || targetItem.agentName || 'Verified UniNest Agent',
         soldAt: 'Just now',
         description: targetItem.description || 'Sold via verified UniNest campus agent.',
@@ -2402,22 +2406,28 @@
         localStorage.setItem('uninest_sold_items', JSON.stringify(soldList));
       }
 
-      // 2. Remove from localStorage STORAGE_KEY_PUBLIC and record tombstone
-      recordDeletedRef(itemId, itemRef || targetItem.listingRef);
+      // 2. Remove from localStorage STORAGE_KEY_PUBLIC & STORAGE_KEY_PENDING_SUBMISSIONS and record tombstone
+      recordDeletedRef(resolvedId, resolvedRef);
       const stored = localStorage.getItem(STORAGE_KEY_PUBLIC);
       if (stored) {
         let pubList = JSON.parse(stored);
-        pubList = pubList.filter(i => !(i.id == itemId || (itemRef && i.listingRef === itemRef)));
+        pubList = pubList.filter(i => !(i.id == resolvedId || (resolvedRef && i.listingRef === resolvedRef)));
         localStorage.setItem(STORAGE_KEY_PUBLIC, JSON.stringify(pubList));
+      }
+      const storedPending = localStorage.getItem(STORAGE_KEY_PENDING_SUBMISSIONS);
+      if (storedPending) {
+        let pendList = JSON.parse(storedPending);
+        pendList = pendList.filter(i => !(i.id == resolvedId || (resolvedRef && i.listingRef === resolvedRef)));
+        localStorage.setItem(STORAGE_KEY_PENDING_SUBMISSIONS, JSON.stringify(pendList));
       }
     } catch (e) {
       console.error(e);
     }
 
     // 3. Remove immediately from memory arrays
-    serverMarketplaceItems = serverMarketplaceItems.filter(i => !(i.id == itemId || (itemRef && i.listingRef === itemRef)));
+    serverMarketplaceItems = serverMarketplaceItems.filter(i => !(i.id == resolvedId || (resolvedRef && i.listingRef === resolvedRef)));
     if (window.uniData && Array.isArray(window.uniData.marketplaceItems)) {
-      window.uniData.marketplaceItems = window.uniData.marketplaceItems.filter(i => !(i.id == itemId || (itemRef && i.listingRef === itemRef)));
+      window.uniData.marketplaceItems = window.uniData.marketplaceItems.filter(i => !(i.id == resolvedId || (resolvedRef && i.listingRef === resolvedRef)));
     }
 
     // 4. Send PATCH to central cloud store so it marks status as 'Sold' and removes it everywhere
@@ -2430,12 +2440,15 @@
       },
       body: JSON.stringify({
         action: 'sold',
-        id: itemId,
-        listingRef: itemRef || targetItem.listingRef,
+        id: resolvedId,
+        listingRef: resolvedRef,
         itemData: targetItem,
       }),
     })
-      .then(function(res) { return res.json(); })
+      .then(function(res) {
+        if (res.ok) syncMarketplaceFromServer();
+        return res.json();
+      })
       .catch(function(err) {
         console.warn('Could not sync sold status to cloud store:', err);
       });
@@ -2443,7 +2456,7 @@
     // 5. Notify all components & re-render portal and public catalog
     try {
       window.dispatchEvent(new CustomEvent('uninest:item-sold', {
-        detail: { itemId: itemId, listingRef: itemRef || targetItem.listingRef, title: targetItem.title }
+        detail: { itemId: resolvedId, listingRef: resolvedRef, title: targetItem.title }
       }));
     } catch (e) {}
 
