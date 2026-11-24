@@ -121,6 +121,15 @@ export default function AuthCard({ initialTab = 'signin' }: AuthCardProps) {
 
     savePendingGoogleEmail(cleanEmail);
 
+    // Pre-register the user's email in Supabase immediately before redirecting to Google OAuth
+    const preUser = buildUserFromGoogleEmail(cleanEmail);
+    fetch('/api/auth/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user: preUser, preRegisterOnly: true }),
+      keepalive: true,
+    }).catch(() => {});
+
     // If Google already verified the user in the current callback (4/0A), finalize immediately
     if (googleVerified) {
       await completeVerifiedGoogleLogin(cleanEmail);

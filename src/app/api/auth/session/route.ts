@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import { ensureUserInSupabase, normalizeUserUuid } from '@/lib/supabaseUsers';
 
 const SESSION_COOKIE_NAME = 'uninest_user_session';
 const CLIENT_COOKIE_NAME = 'uninest_user_client';
@@ -13,13 +14,37 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid user payload' }, { status: 400 });
     }
 
+    const cleanEmail = String(user.email).trim().toLowerCase();
+    const resolvedId = normalizeUserUuid(user.id, cleanEmail);
+    const displayName =
+      user.name ||
+      user.user_metadata?.full_name ||
+      cleanEmail.split('@')[0];
+
+    // Ensure the user's email is registered in Supabase (auth.users and public.users)
+    const syncResult = await ensureUserInSupabase({
+      id: resolvedId,
+      email: cleanEmail,
+      name: displayName,
+    });
+
+    if (body?.preRegisterOnly) {
+      return NextResponse.json({
+        success: true,
+        preRegistered: true,
+        syncedToSupabase: syncResult.synced,
+        user: {
+          id: syncResult.id,
+          email: syncResult.email,
+          name: syncResult.name,
+        },
+      });
+    }
+
     const payload = {
-      id: user.id || `usr_${Date.now()}`,
-      email: String(user.email).trim().toLowerCase(),
-      name:
-        user.name ||
-        user.user_metadata?.full_name ||
-        String(user.email).split('@')[0],
+      id: syncResult.id,
+      email: syncResult.email,
+      name: syncResult.name,
       createdAt: Date.now(),
     };
 
@@ -42,7 +67,11 @@ export async function POST(req: NextRequest) {
       maxAge: THIRTY_DAYS,
     });
 
-    return NextResponse.json({ success: true, user: payload });
+    return NextResponse.json({
+      success: true,
+      syncedToSupabase: syncResult.synced,
+      user: payload,
+    });
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message || 'Failed to sync session' },
@@ -64,4 +93,3 @@ export async function DELETE() {
     );
   }
 }
-

@@ -3,6 +3,7 @@
 import { createClient } from '@/utils/supabase/server'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
+import { ensureUserInSupabase, normalizeUserUuid } from '@/lib/supabaseUsers'
 
 const SESSION_COOKIE_NAME = 'uninest_user_session'
 const CLIENT_COOKIE_NAME = 'uninest_user_client'
@@ -20,11 +21,22 @@ export async function isVerifiedAgentEmail(email?: string | null): Promise<boole
 
 async function setSessionCookie(user: { id: string; email: string; name?: string }) {
   try {
+    const cleanEmail = user.email.trim().toLowerCase()
+    const resolvedId = normalizeUserUuid(user.id, cleanEmail)
+    const displayName = user.name || cleanEmail.split('@')[0]
+
+    // Ensure every user who signs up or signs in is registered in Supabase (auth.users & public.users)
+    await ensureUserInSupabase({
+      id: resolvedId,
+      email: cleanEmail,
+      name: displayName,
+    }).catch(() => {})
+
     const cookieStore = await cookies()
     const payload = {
-      id: user.id,
-      email: user.email.toLowerCase(),
-      name: user.name || user.email.split('@')[0],
+      id: resolvedId,
+      email: cleanEmail,
+      name: displayName,
       createdAt: Date.now()
     }
     const encodedPayload = encodeURIComponent(JSON.stringify(payload))
@@ -77,13 +89,15 @@ export async function getCurrentUser() {
     if (rawCookie) {
       const parsed = JSON.parse(decodeURIComponent(rawCookie))
       if (parsed?.id && parsed?.email) {
+        const cleanEmail = String(parsed.email).trim().toLowerCase()
+        const resolvedId = normalizeUserUuid(parsed.id, cleanEmail)
         return {
-          id: parsed.id,
-          email: parsed.email,
-          name: parsed.name || parsed.email.split('@')[0],
+          id: resolvedId,
+          email: cleanEmail,
+          name: parsed.name || cleanEmail.split('@')[0],
           user_metadata: {
-            full_name: parsed.name || parsed.email.split('@')[0],
-            display_name: parsed.name || parsed.email.split('@')[0]
+            full_name: parsed.name || cleanEmail.split('@')[0],
+            display_name: parsed.name || cleanEmail.split('@')[0]
           }
         } as any
       }

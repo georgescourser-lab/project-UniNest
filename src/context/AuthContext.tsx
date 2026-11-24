@@ -139,11 +139,23 @@ export function buildUserFromGoogleEmail(rawEmail: string): AuthUser {
       .join(' ') ||
     localPart
 
-  let hash = 0
+  let h1 = 0xdeadbeef ^ email.length
+  let h2 = 0x41c6ce57 ^ email.length
+  let h3 = 0x9e3779b9 ^ email.length
+  let h4 = 0x85ebca6b ^ email.length
   for (let i = 0; i < email.length; i++) {
-    hash = (hash * 31 + email.charCodeAt(i)) >>> 0
+    const ch = email.charCodeAt(i)
+    h1 = Math.imul(h1 ^ ch, 2654435761) >>> 0
+    h2 = Math.imul(h2 ^ ch, 1597334677) >>> 0
+    h3 = Math.imul(h3 ^ ch, 2246822507) >>> 0
+    h4 = Math.imul(h4 ^ ch, 3266489909) >>> 0
   }
-  const id = `google_${hash.toString(16)}`
+  const hex =
+    h1.toString(16).padStart(8, '0') +
+    h2.toString(16).padStart(8, '0') +
+    h3.toString(16).padStart(8, '0') +
+    h4.toString(16).padStart(8, '0')
+  const id = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`
   return {
     id,
     email,
